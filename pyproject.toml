@@ -7,13 +7,14 @@ requires-python = ">=3.13"
 dependencies = [
     "click>=8.5.0",
     "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
     "requests>=2.34.2",
     "singleton-decorator>=1.0.0",
 ]
 
 [project.scripts]
-pipelinespec = "pipelinespec.main:main"
 sample = "pipelinespec.cli.sample:main"
+pipelinespec = "pipelinespec.cli.main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]

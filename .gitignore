@@ -1,3 +1,4 @@
+data/repositories/
 __pycache__/
-data/raw_repositories_*.json
+data/raw/
 .env

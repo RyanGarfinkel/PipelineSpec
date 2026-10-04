@@ -71,7 +71,7 @@ def main(n: int, output: str, verbose: bool) -> None:
         }
 
     # Fetch repositories
-    
+
     samples = []
 
     log.info(f'Fetching {n} valid GitHub repsitories...')
@@ -83,7 +83,11 @@ def main(n: int, output: str, verbose: bool) -> None:
 
         raw_repos = fetch_github_repositories(n, i, request_headers)
         if verbose:
-            with open(output / f'raw_repositories_{i}.json', 'w') as f:
+            dir = output / 'raw'
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+            
+            with open(dir / f'raw_repositories_{i}.json', 'w') as f:
                 json.dump(raw_repos, f, indent=4)
         
         valid = filter_repos(raw_repos, request_headers)

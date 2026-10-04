@@ -8,4 +8,5 @@ logging.basicConfig(
     format='[%(asctime)s] %(levelname)s - %(message)s',
     handlers=[handler]
 )
-    
+
+logging.getLogger('urllib3').setLevel(logging.WARNING)
