@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This project requires [act](https://nektosact.com/installation/index.html).
+This project requires [act](https://nektosact.com/installation/index.html) to run GitHub Actions jobs and workflows locally. Act needs [Docker](https://www.docker.com/) to run them in images and PipelineSpec needs Docker to trace network calls and file access. The docker image used is [here](./src/pipelinespec/docker/Dockerfile).
 
 ## Sampling
 
