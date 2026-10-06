@@ -1,0 +1,15 @@
+services:
+  proxy:
+    image: mitmproxy/mitmproxy:12.2.3
+    command: mitmdump --listen-port 8080 --set confdir=/certs --set connection_strategy=lazy -s /addon.py
+    environment:
+      - RUN_DIR=/run
+    networks: [sandbox]
+    volumes:
+      - ./addon.py:/addon.py:ro
+      - ${RUN_DIR?RUN_DIR not set.}:/run:rw
+      - ${CERTS_DIR?CERTS_DIR not set.}:/certs:ro
+
+networks:
+  sandbox:
+    internal: true

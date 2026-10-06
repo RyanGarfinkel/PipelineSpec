@@ -1,7 +1,8 @@
 from pipelinespec.models import Job, TraceConfig, TraceResult, JobRun
+from pipelinespec.tools import act, docker_compose
 from singleton_decorator import singleton
-from pipelinespec.tools import act
 import logging as log
+import json
 
 @singleton
 class JobRunner:
@@ -19,8 +20,17 @@ class JobRunner:
             for key, value in config.env.items():
                 f.write(f'{key}={value}\n')
 
+        with open(run_data.output_dir / 'network_policy.json', 'w') as f:
+            json.dump([mock.model_dump() for mock in config.networks], f)
+
         # Call ACT
-        return act.run(job, run_data)
+        try:
+            docker_compose.up(run_data)
+            return act.run(job, run_data, docker_compose.network(run_data))
+        finally:
+            docker_compose.save_logs(run_data)
+            docker_compose.down(run_data)
+        
         # Extract results
 
         # Return results

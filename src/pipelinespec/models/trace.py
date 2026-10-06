@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 class MockNetworkResult(BaseModel):
 
     url: str = Field(..., frozen=True, description='URL of the network request.')
+    method: str = Field(..., frozen=True, description='HTTP method of the network request.')
     status: int = Field(..., frozen=True, description='Status code to be returned from the network request.')
+    headers: dict[str, str] = Field(..., frozen=True, description='Headers to be returned from the network request.')
     response: Any = Field(..., frozen=True, description='Response to be returned from the network request.')
 
 class TraceConfig(BaseModel):
@@ -24,7 +26,14 @@ class FileAccess(BaseModel):
 
 class NetworkAccess(BaseModel):
 
-    url: str = Field(..., frozen=True)
+    scheme: str = Field(..., frozen=True)
+    host: str = Field(..., frozen=True)
+    port: int = Field(..., frozen=True)
+    method: str = Field(..., frozen=True)
+    path: str = Field(..., frozen=True)
+    headers: dict[str, str] = Field(..., frozen=True)
+    status: int = Field(..., frozen=True)
+    result: Literal['mocked', 'blocked'] = Field(..., frozen=True)
 
 class TraceResult(BaseModel):
 
