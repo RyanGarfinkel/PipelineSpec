@@ -1,5 +1,3 @@
-data/repositories/
 __pycache__/
-data/runs/
-data/raw/
+data/
 .env

@@ -1,67 +1,67 @@
 from mitmproxy.http import HTTPFlow, Response
+from fnmatch import fnmatchcase
 from pathlib import Path
 import json
 import os
 
-class TrafficController:
+class TrafficLogger:
 
     def __init__(self):
 
-        run_dir_str = os.environ.get('RUN_DIR', None)
+        run_dir = os.environ.get('RUN_DIR', None)
 
-        if run_dir_str is None:
-            raise ValueError('Network proxy missing RUN_DIR.')
-        
-        self.run_dir = Path(run_dir_str)
+        if run_dir is None:
+            raise ValueError('Traffic logger missing RUN_DIR.')
 
-        with open(self.run_dir / 'network_policy.json', 'r') as f:
-            policy_data = json.load(f)
+        self.traffic_file = Path(run_dir) / 'traffic.jsonl'
 
-        self.network_policy = [{
-                'url': item['url'],
-                'method': item['method'],
-                'status': item['status'],
-                'headers': item['headers'],
-                'response': item['response']
-            } for item in policy_data]
+        with open(Path(run_dir) / 'mocked_calls.json', 'r') as f:
+            self.mocks = json.load(f)
+
+        with open(Path(run_dir) / 'secrets.json', 'r') as f:
+            self.secrets = json.load(f)
 
     def request(self, flow: HTTPFlow) -> None:
 
-        url = flow.request.pretty_url
-        method = flow.request.method
+        request = flow.request
+        url = f'{request.scheme}://{request.pretty_host}{request.path.split("?")[0]}'
 
-        mocked = False
+        for mock in self.mocks:
+            if mock['method'].upper() == request.method and fnmatchcase(url, mock['url']):
+                flow.response = Response.make(mock['status'], json.dumps(mock['body']).encode(), mock['headers'])
+                flow.metadata['result'] = 'mocked'
+                return
 
-        # Mock request or return error
+    def response(self, flow: HTTPFlow) -> None:
 
-        for mock in self.network_policy:
-            if url == mock['url'] and method == mock['method']:
-                flow.response = Response.make(
-                    status_code=mock['status'],
-                    headers=mock['headers'],
-                    content=json.dumps(mock['response']).encode('utf-8')
-                )
-                mocked = True
-                break
-        
-        if not mocked:
-            flow.response = Response.make(
-                status_code=403,
-                content=b'{"error": "Network request blocked by TrafficController."}'
-            )
+        self.__log(flow, flow.metadata.get('result', 'passed'), flow.response.status_code)
 
-        # Log request and response
+    def error(self, flow: HTTPFlow) -> None:
 
-        with open(self.run_dir / 'traffic.jsonl', 'a') as f:
+        self.__log(flow, 'failed', None)
+
+    def __sent_secrets(self, request) -> list[str]:
+
+        parts = [request.pretty_url, *(f'{key}: {value}' for key, value in request.headers.items(multi=True))]
+        content = '\n'.join(parts).encode() + (request.raw_content or b'')
+
+        return sorted(name for name, value in self.secrets.items() if value.encode() in content)
+
+    def __log(self, flow: HTTPFlow, result: str, status: int | None) -> None:
+
+        request = flow.request
+
+        with open(self.traffic_file, 'a') as f:
             f.write(json.dumps({
-                'scheme': flow.request.scheme,
-                'host': flow.request.host,
-                'port': flow.request.port,
-                'method': flow.request.method,
-                'path': flow.request.path,
-                'headers': dict(flow.request.headers),
-                'status': flow.response.status_code,
-                'result': 'mocked' if mocked else 'blocked'
+                'scheme': request.scheme,
+                'host': request.pretty_host,
+                'port': request.port,
+                'method': request.method,
+                'path': request.path,
+                'headers': list(request.headers.items(multi=True)),
+                'secrets': self.__sent_secrets(request),
+                'status': status,
+                'result': result,
             }) + '\n')
 
-addons = [TrafficController()]
+addons = [TrafficLogger()]

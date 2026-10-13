@@ -1,43 +1,20 @@
-from typing import Any, Literal, Set, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
 
-# Input to trace
+class MockedCall(BaseModel):
 
-class MockNetworkResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-    url: str = Field(..., frozen=True, description='URL of the network request.')
-    method: str = Field(..., frozen=True, description='HTTP method of the network request.')
-    status: int = Field(..., frozen=True, description='Status code to be returned from the network request.')
-    headers: dict[str, str] = Field(..., frozen=True, description='Headers to be returned from the network request.')
-    response: Any = Field(..., frozen=True, description='Response to be returned from the network request.')
+    method: str = Field(..., description='HTTP method of the request to mock.')
+    url: str = Field(..., description='Glob matched against scheme, host and path (no query string), e.g. https://api.github.com/repos/*/deployments.')
+    status: int = Field(default=200, description='Status code to return.')
+    headers: dict[str, str] = Field(default_factory=dict, description='Headers to return.')
+    body: Any = Field(default=None, description='JSON body to return.')
 
 class TraceConfig(BaseModel):
 
-    networks: List[MockNetworkResult] = Field(..., frozen=True, description='List of network requests to be mocked.')
-    secrets: dict[str, str] = Field(..., frozen=True, description='Dictionary of GitHub secrets to be mocked.')
-    env: dict[str, str] = Field(..., frozen=True, description='Dictionary of environment variables to be mocked.')
+    model_config = ConfigDict(frozen=True)
 
-# Returned from trace
-
-class FileAccess(BaseModel):
-
-    path: str = Field(..., frozen=True)
-    access_type: Literal['read', 'write', 'execute'] = Field(..., frozen=True)
-
-class NetworkAccess(BaseModel):
-
-    scheme: str = Field(..., frozen=True)
-    host: str = Field(..., frozen=True)
-    port: int = Field(..., frozen=True)
-    method: str = Field(..., frozen=True)
-    path: str = Field(..., frozen=True)
-    headers: dict[str, str] = Field(..., frozen=True)
-    status: int = Field(..., frozen=True)
-    result: Literal['mocked', 'blocked'] = Field(..., frozen=True)
-
-class TraceResult(BaseModel):
-
-    files: Set[FileAccess] = Field(..., frozen=True)
-    networks: List[NetworkAccess] = Field(..., frozen=True)
-    secrets: Set[str] = Field(..., frozen=True)
-    env: Set[str] = Field(..., frozen=True)
+    workflow: str
+    job: str
+    mocked_calls: list[MockedCall] = Field(default_factory=list)

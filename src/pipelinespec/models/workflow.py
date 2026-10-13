@@ -1,6 +1,9 @@
 from pydantic import BaseModel, Field, field_validator
 from pathlib import Path
 import yaml
+import re
+
+SECRET_REFERENCE = re.compile(r"secrets(?:\.|\[\s*['\"])(\w+)")
 
 class Job(BaseModel):
 
@@ -8,6 +11,9 @@ class Job(BaseModel):
     path: Path = Field(..., frozen=True)
     needs: list[str] = Field(..., frozen=True)
     steps: list[dict] = Field(..., frozen=True)
+    uses: str | None = Field(default=None, frozen=True)
+    env: list[str] = Field(default_factory=list, frozen=True)
+    secrets: dict[str, list[str]] = Field(default_factory=dict, frozen=True)
 
 class Workflow(BaseModel):
 
@@ -58,11 +64,24 @@ class Workflow(BaseModel):
         jobs = []
         for name, data in workflow_contents.get('jobs', {}).items():
             needs = data.get('needs', [])
+            steps = data.get('steps', [])
+
+            env: dict[str, set[str]] = {}
+            for block in [workflow_contents.get('env'), data.get('env'), *[step.get('env') for step in steps]]:
+                if not isinstance(block, dict):
+                    continue
+
+                for key, value in block.items():
+                    env.setdefault(key, set()).update(SECRET_REFERENCE.findall(str(value)))
+
             jobs.append(Job(
                 name=name,
                 path=path,
                 needs=[needs] if isinstance(needs, str) else needs,
-                steps=data.get('steps', [])
+                steps=steps,
+                uses=data.get('uses'),
+                env=sorted(env),
+                secrets={key: sorted(secrets) for key, secrets in env.items() if secrets}
             ))
 
         return cls(

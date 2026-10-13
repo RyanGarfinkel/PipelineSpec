@@ -1,9 +1,50 @@
-from pipelinespec.models import Workflow
+from pipelinespec.models import MockedCall, TraceConfig
+from pipelinespec.core import tracer
 from pipelinespec import settings
 from pathlib import Path
 import logging as log
 import click
 import os
+
+def __validate(repo: str, certificate: str | None, container: str | None, arch: str | None, output: str | None) -> None:
+
+    # Repository
+    repository = Path(repo).expanduser()
+    if not os.path.exists(repository):
+        raise FileNotFoundError(f'Repository not found: {repository}')
+
+    if not os.path.exists(repository / '.github' / 'workflows'):
+        raise FileNotFoundError(f'No workflows found in repository: {repository}')
+
+    settings.repo = repository
+
+    # Certificate
+
+    if certificate is not None:
+        settings.trace.mitm_certificate = Path(certificate).expanduser()
+
+    if settings.trace.mitm_certificate is None:
+        raise ValueError('MITMProxy certificate directory not provided. Use --certificate or set CERTIFICATE.')
+
+    if not os.path.exists(settings.trace.mitm_certificate):
+        raise FileNotFoundError(f'MITMProxy certificate directory not found: {settings.trace.mitm_certificate}')
+
+    # Output directory
+
+    if output is not None:
+        settings.file.output = Path(output)
+
+    os.makedirs(settings.file.output, exist_ok=True)
+    settings.file.secrets.touch()
+    settings.file.env.touch()
+
+    # Update settings
+    
+    if container is not None:
+        settings.trace.container = container
+
+    if arch is not None:
+        settings.trace.arch = arch
 
 @click.command()
 @click.option('--repo', '-r', required=True, help='Path to the GitHub repository.')
@@ -14,68 +55,20 @@ import os
 @click.option('--verbose', '-v', is_flag=True, help='Verbose logging.')
 def main(repo: str, certificate: str | None, container: str | None, arch: str | None, output: str | None, verbose: bool) -> None:
 
-    # Input validation
-
     if verbose:
         log.getLogger().setLevel(log.DEBUG)
 
-    repository = Path(repo).expanduser()
+    __validate(repo, certificate, container, arch, output)
 
-    if not os.path.exists(repository):
-        raise FileNotFoundError(f'Repository not found: {repository}')
+    npm_publish = MockedCall(
+        method='PUT',
+        url='https://registry.npmjs.org/dafink-ui',
+        status=200,
+        headers={'content-type': 'application/json'},
+        body={'ok': True},
+    )
 
-    if not os.path.exists(repository / '.github' / 'workflows'):
-        raise FileNotFoundError(f'No workflows found in repository: {repository}')
-
-    if certificate is not None:
-        settings.certificate = Path(certificate).expanduser()
-
-    if settings.certificate is None:
-        raise ValueError('MITMProxy certificate directory not provided. Use --certificate or set CERTIFICATE.')
-
-    if not os.path.exists(settings.certificate):
-        raise FileNotFoundError(f'MITMProxy certificate directory not found: {settings.certificate}')
-
-    # Update settings
-
-    settings.repo = repository
-
-    if container is not None:
-        settings.container = container
-
-    if arch is not None:
-        settings.arch = arch
-
-    if output is not None:
-        settings.output_dir = Path(output)
-
-    # Extract workflows
-
-    workflows = (repository / '.github' / 'workflows').glob('*.yml')
-    workflows = [Workflow.parse(w) for w in workflows]
-
-    log.info(f'Found {len(list(workflows))} workflows in repository: {repository}')
-
-    for workflow in workflows:
-        log.info(f'{workflow.name} - {workflow.path}: {[j.name for j in workflow.jobs]}')
-
-    ##################
-
-    ci_workflow = next((w for w in workflows if w.name == 'CI'), None)
-    if ci_workflow is None:
-        raise ValueError(f'No ci workflow found in repository: {repository}')
-
-    lint_and_test_job = next((j for j in ci_workflow.jobs if j.name == 'lint-and-test'), None)
-    if lint_and_test_job is None:
-        raise ValueError(f'No lint-and-test job found in ci workflow: {ci_workflow.path}')
-
-    from pipelinespec.core.runner import job_runner
-    from pipelinespec.models import TraceConfig
-
-    log.info(f'Running job: {lint_and_test_job.name} from workflow: {ci_workflow.name}')
-    job_runner.execute(lint_and_test_job, TraceConfig(env={}, secrets={}, networks=[]))
-    log.info(f'Job completed: {lint_and_test_job.name} from workflow: {ci_workflow.name}')
-
+    tracer.run(TraceConfig(workflow='Publish CLI', job='publish', mocked_calls=[npm_publish]))
 
 if __name__ == '__main__':
     main()
