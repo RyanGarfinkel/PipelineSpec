@@ -31,6 +31,13 @@ class RecordCallbackHandler(BaseCallbackHandler):
         usage = message.usage_metadata or {}
         content = message.content if isinstance(message.content, str) else ''.join(block.get('text', '') for block in message.content if isinstance(block, dict))
         input_tokens, output_tokens = usage.get('input_tokens', 0), usage.get('output_tokens', 0)
+        reasoning = next((message.additional_kwargs[key] for key in ('reasoning_content', 'reasoning') if message.additional_kwargs.get(key)), None)
+
+        extra = {
+            'finish_reason': message.response_metadata.get('finish_reason'),
+            'invalid_tool_calls': [{'name': call.get('name'), 'args': call.get('args'), 'error': call.get('error')} for call in message.invalid_tool_calls],
+            'reasoning': reasoning,
+        }
 
         self.__add({
             'type': 'llm',
@@ -40,6 +47,7 @@ class RecordCallbackHandler(BaseCallbackHandler):
             'total_tokens': usage.get('total_tokens', input_tokens + output_tokens),
             'tool_calls': len(message.tool_calls),
             'text': content,
+            **{key: value for key, value in extra.items() if value},
         })
 
     def on_tool_start(self, serialized, input_str, *, run_id, inputs=None, **__):

@@ -34,6 +34,7 @@ testpaths = ["tests"]
 [project.scripts]
 sample = "pipelinespec.cli.sample:main"
 pipelinespec = "pipelinespec.cli.main:main"
+verify-constraints = "pipelinespec.cli.verify:main"
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]

@@ -11,7 +11,19 @@ class Model:
         if settings.agent.provider == 'anthropic':
             return self.__anthropic()
 
+        if settings.agent.provider == 'openai':
+            return self.__openai()
+
         return self.__local()
+
+    def middleware(self) -> list:
+
+        if settings.agent.provider != 'anthropic':
+            return []
+
+        from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
+
+        return [AnthropicPromptCachingMiddleware()]
 
     def __anthropic(self) -> BaseChatModel:
 
@@ -21,6 +33,15 @@ class Model:
         from langchain_anthropic import ChatAnthropic
 
         return ChatAnthropic(model=settings.agent.model, max_tokens=settings.agent.max_tokens)
+
+    def __openai(self) -> BaseChatModel:
+
+        if not os.environ.get('OPENAI_API_KEY'):
+            raise ValueError('OPENAI_API_KEY is not set.')
+
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(model=settings.agent.model, max_tokens=settings.agent.max_tokens)
 
     def __local(self) -> BaseChatModel:
 
