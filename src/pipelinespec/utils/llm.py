@@ -20,7 +20,7 @@ class Model:
 
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(model=settings.agent.model)
+        return ChatAnthropic(model=settings.agent.model, max_tokens=settings.agent.max_tokens)
 
     def __local(self) -> BaseChatModel:
 
@@ -29,6 +29,6 @@ class Model:
 
         from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(model=settings.agent.model, base_url=settings.agent.url, api_key='not-needed')
+        return ChatOpenAI(model=settings.agent.model, base_url=settings.agent.url, api_key='not-needed', max_tokens=settings.agent.max_tokens)
 
 model = Model()

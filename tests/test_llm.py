@@ -1,3 +1,4 @@
+from langchain_core.messages import HumanMessage
 from pipelinespec.utils.llm import model
 from pipelinespec import settings
 from unittest.mock import patch
@@ -11,6 +12,7 @@ def test_claude_model_with_a_key():
 
     assert type(llm).__name__ == 'ChatAnthropic'
     assert llm.model == 'claude-sonnet-5-5'
+    assert llm.max_tokens == settings.agent.max_tokens
 
 def test_claude_model_without_a_key():
 
@@ -28,6 +30,7 @@ def test_local_model_with_a_url():
     assert type(llm).__name__ == 'ChatOpenAI'
     assert llm.model_name == 'gemma4'
     assert llm.openai_api_base == 'http://localhost:8000/v1'
+    assert llm._get_request_payload([HumanMessage(content='hi')])['max_completion_tokens'] == settings.agent.max_tokens
 
 def test_local_model_without_a_url():
 
