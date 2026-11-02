@@ -1,6 +1,7 @@
-from pipelinespec.models import Constraints, Gate, Term, Variable
+from pipelinespec.models import Gate, JobConstraints, Term, Variable, WorkflowTrigger
 from pipelinespec.tools import smt
 from pipelinespec import settings
+import pytest
 
 def test_solve(tmp_path, monkeypatch):
 
@@ -12,13 +13,15 @@ def test_solve(tmp_path, monkeypatch):
         'label': Variable(target='payload.label.name', values=('deploy', 'docs')),
         'dry_run': Variable(target='payload.inputs.dry_run', values=(False, True)),
     }
-    candidates = smt.solve(Constraints(events=['issues', 'workflow_dispatch'], gates=[job, step], variables=variables))
+    candidates = smt.solve(JobConstraints(gates=[job, step], variables=variables), [WorkflowTrigger(event='issues'), WorkflowTrigger(event='workflow_dispatch')])
     baseline = candidates[0]
 
-    assert baseline.reason == 'all conditions hold'
+    assert baseline.reason == 'issues: all conditions hold'
     assert baseline.assignment == {'event': 'issues', 'payload.label.name': 'deploy', 'payload.inputs.dry_run': False}
-    assert any(candidate.reason == 'job.if fails' and candidate.assignment == {**baseline.assignment, 'payload.label.name': 'docs'} for candidate in candidates)
-    assert any(candidate.reason == 'step.if fails' and (candidate.assignment['event'] == 'workflow_dispatch' or candidate.assignment['payload.inputs.dry_run']) for candidate in candidates)
+    assert any(candidate.reason == 'issues: job.if fails' and candidate.assignment == {**baseline.assignment, 'payload.label.name': 'docs'} for candidate in candidates)
+    assert any(candidate.reason == 'issues: step.if fails' and candidate.assignment['payload.inputs.dry_run'] for candidate in candidates)
+    assert all(candidate.assignment['event'] == candidate.reason.split(':')[0] for candidate in candidates)
+    assert any(candidate.reason == 'workflow_dispatch: job.if holds' and candidate.assignment['event'] == 'workflow_dispatch' for candidate in candidates)
 
 def test_alternatives_and_text_operators(tmp_path, monkeypatch):
 
@@ -29,17 +32,22 @@ def test_alternatives_and_text_operators(tmp_path, monkeypatch):
         [Term(name='ref', op='==', value='refs/heads/release')],
     ])
     variables = {'ref': Variable(target='payload.ref', values=('refs/heads/release', 'refs/tags/v1', 'refs/heads/dev'))}
-    candidates = smt.solve(Constraints(events=['push'], gates=[tag], variables=variables))
+    candidates = smt.solve(JobConstraints(gates=[tag], variables=variables), [WorkflowTrigger(event='push')])
 
-    assert {candidate.assignment['payload.ref'] for candidate in candidates if candidate.reason in ('all conditions hold', 'tag.if holds')} <= {'refs/heads/release', 'refs/tags/v1'}
-    assert any(candidate.reason == 'tag.if fails' and candidate.assignment['payload.ref'] == 'refs/heads/dev' for candidate in candidates)
+    assert {candidate.assignment['payload.ref'] for candidate in candidates if candidate.reason in ('push: all conditions hold', 'push: tag.if holds')} <= {'refs/heads/release', 'refs/tags/v1'}
+    assert any(candidate.reason == 'push: tag.if fails' and candidate.assignment['payload.ref'] == 'refs/heads/dev' for candidate in candidates)
 
 def test_equivalent():
 
     keep = Gate(name='a', type='scope', location='x:1', any_of=[[Term(name='n', op='>', value=2)]])
     same = Gate(name='b', type='scope', location='x:1', any_of=[[Term(name='n', op='>=', value=3)]])
     other = Gate(name='c', type='scope', location='x:1', any_of=[[Term(name='n', op='>', value=3)]])
-    constraints = Constraints(events=['push'], variables={'n': Variable(target='payload.n', values=(1, 5))})
+    constraints = JobConstraints(variables={'n': Variable(target='payload.n', values=(1, 5))})
 
-    assert smt.equivalent(constraints, [keep], constraints, [same])
-    assert not smt.equivalent(constraints, [keep], constraints, [other])
+    assert smt.equivalent(constraints, [keep], constraints, [same], ['push'])
+    assert not smt.equivalent(constraints, [keep], constraints, [other], ['push'])
+
+def test_solve_needs_an_event():
+
+    with pytest.raises(ValueError, match='no event'):
+        smt.solve(JobConstraints(), [])

@@ -8,7 +8,15 @@ class Git:
 
     def head(self) -> str | None:
 
-        process = subprocess.run(['git', '-C', str(settings.repo), 'rev-parse', 'HEAD'], capture_output=True, text=True)
+        return self.__commit('HEAD')
+
+    def parent(self) -> str | None:
+
+        return self.__commit('HEAD~1')
+
+    def __commit(self, revision: str) -> str | None:
+
+        process = subprocess.run(['git', '-C', str(settings.repo), 'rev-parse', '--verify', '--quiet', f'{revision}^{{commit}}'], capture_output=True, text=True)
 
         return process.stdout.strip() if process.returncode == 0 else None
 

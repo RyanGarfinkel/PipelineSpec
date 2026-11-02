@@ -1,8 +1,8 @@
 from z3 import And, Bool, BoolVal, Contains, Int, IntVal, Not, Optimize, Or, PrefixOf, Solver, String, StringVal, SuffixOf, Xor, is_true, sat, unsat
-from pipelinespec.models import Candidate, Constraints, Gate, Scalar, Term, kind
+from pipelinespec.models import Gate, JobConstraints, Scalar, Term, Variant, WorkflowTrigger, kind
 from singleton_decorator import singleton
-from pipelinespec import settings
-import logging as log
+from pipelinespec import log, settings
+from itertools import product
 import operator
 
 COMPARE = {'==': operator.eq, '!=': operator.ne, '<': operator.lt, '<=': operator.le, '>': operator.gt, '>=': operator.ge}
@@ -10,13 +10,41 @@ COMPARE = {'==': operator.eq, '!=': operator.ne, '<': operator.lt, '<=': operato
 @singleton
 class Smt:
 
-    def solve(self, constraints: Constraints) -> list[Candidate]:
+    def solve(self, constraints: JobConstraints, workflow_triggers: list[WorkflowTrigger]) -> list[Variant]:
 
-        domains = {target: values for target, values in constraints.domains.items() if values}
-        kinds = {target: kind(values[0]) for target, values in domains.items()}
-        symbols = {target: {'bool': Bool, 'int': Int, 'str': String}[kinds[target]](target) for target in domains}
-        domain = [self.__any([symbols[target] == self.__literal(value) for value in values]) for target, values in domains.items()]
+        if not workflow_triggers:
+            raise ValueError('There is no event to solve for: the workflow pass recorded no trigger.')
+
+        events = [trigger.event for trigger in workflow_triggers]
+
+        # Formatting
+
+        domains = {
+            'event': events,
+            **{target: values for target, values in constraints.domains.items() if values}
+        }
+
+        kinds = {
+            target: kind(values[0])
+            for target, values in domains.items()
+        }
+
+        symbols = {
+            target: {
+                'bool': Bool,
+                'int': Int,
+                'str': String
+            }[kinds[target]](target)
+            for target in domains
+        }
+
+        domain = [
+            self.__any([symbols[target] == self.__literal(value) for value in values])
+            for target, values in domains.items()
+        ]
+
         preferred = [symbols[target] == self.__literal(values[0]) for target, values in domains.items()]
+        
         expressions = {gate.name: self.__gate(gate, constraints, symbols) for gate in constraints.gates}
 
         formulas = Solver()
@@ -27,26 +55,28 @@ class Smt:
         for name, expression in expressions.items():
             goals += [(f'{name} holds', expression), (f'{name} fails', Not(expression))]
 
-        candidates: dict[tuple, Candidate] = {}
+        candidates: dict[tuple, Variant] = {}
 
-        for reason, goal in goals:
+        for event, (reason, goal) in product(events, goals):
             optimizer = Optimize()
-            optimizer.add(*domain, goal)
+            optimizer.add(*domain, symbols['event'] == StringVal(event), goal)
 
             for preference in preferred:
                 optimizer.add_soft(preference)
 
             if optimizer.check() != sat:
-                log.info(f'No context satisfies: {reason}.')
+                if settings.verbose:
+                    log(f'No {event} context satisfies: {reason}.')
+
                 continue
 
             model = optimizer.model()
             assignment = {target: self.__value(kinds[target], model.eval(symbol, model_completion=True)) for target, symbol in symbols.items()}
-            candidates.setdefault(tuple(sorted(assignment.items())), Candidate(reason=reason, assignment=assignment))
+            candidates.setdefault(tuple(sorted(assignment.items())), Variant(reason=f'{event}: {reason}', assignment=assignment))
 
         return list(candidates.values())
 
-    def equivalent(self, left: Constraints, left_gates: list[Gate], right: Constraints, right_gates: list[Gate]) -> bool:
+    def equivalent(self, left: JobConstraints, left_gates: list[Gate], right: JobConstraints, right_gates: list[Gate], events: list[str]) -> bool:
 
         kinds: dict[str, str] = {}
 
@@ -56,15 +86,15 @@ class Smt:
                     return False
 
         symbols = {'event': String('event'), **{target: {'bool': Bool, 'int': Int, 'str': String}[name](target) for target, name in kinds.items()}}
-        events = self.__any([symbols['event'] == StringVal(event) for event in left.events]) if left.events else BoolVal(True)
+        allowed = self.__any([symbols['event'] == StringVal(event) for event in events]) if events else BoolVal(True)
         conjunction = lambda constraints, gates: self.__all([self.__gate(gate, constraints, symbols) for gate in gates]) if gates else BoolVal(True)
 
         solver = Solver()
-        solver.add(events, Xor(conjunction(left, left_gates), conjunction(right, right_gates)))
+        solver.add(allowed, Xor(conjunction(left, left_gates), conjunction(right, right_gates)))
 
         return solver.check() == unsat
 
-    def __gate(self, gate: Gate, constraints: Constraints, symbols: dict):
+    def __gate(self, gate: Gate, constraints: JobConstraints, symbols: dict):
 
         aliases = constraints.aliases
         names = {'event': symbols['event'], **{name: symbols[variable.target] for name, variable in constraints.variables.items()}}

@@ -5,20 +5,6 @@ import yaml
 import re
 
 SECRET_REFERENCE = re.compile(r"secrets(?:\.|\[\s*['\"])(\w+)")
-INHERITED = ['permissions', 'env', 'defaults']
-
-def references(*blocks) -> dict[str, list[str]]:
-
-    env: dict[str, set[str]] = {}
-
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-
-        for key, value in block.items():
-            env.setdefault(key, set()).update(SECRET_REFERENCE.findall(str(value)))
-
-    return {key: sorted(secrets) for key, secrets in env.items()}
 
 class Step(BaseModel):
 
@@ -58,9 +44,6 @@ class Job(BaseModel):
     needs: list[str] = Field(..., frozen=True)
     steps: list[Step] = Field(..., frozen=True)
     uses: str | None = Field(default=None, frozen=True)
-    env: list[str] = Field(default_factory=list, frozen=True)
-    secrets: dict[str, list[str]] = Field(default_factory=dict, frozen=True)
-    scopes: dict[str, dict[str, list[str]]] = Field(default_factory=dict, frozen=True)
     secret_names: list[str] = Field(default_factory=list, frozen=True)
 
 class Workflow(BaseModel):
@@ -69,8 +52,6 @@ class Workflow(BaseModel):
     path: Path = Field(..., frozen=True)
     jobs: list[Job] = Field(..., frozen=True)
 
-    # Orders jobs based on needs first
-
     @field_validator('jobs')
     @classmethod
     def sort_jobs(cls, jobs: list[Job]) -> list[Job]:
@@ -78,6 +59,8 @@ class Workflow(BaseModel):
         ordered = []
         names = {job.name: job for job in jobs}
         visited = set()
+
+        # Sorts jobs based on what is needed first
 
         def visit(job: Job) -> None:
             if job.name in visited:
@@ -98,39 +81,57 @@ class Workflow(BaseModel):
         return ordered
 
     @classmethod
+    def find_all(cls, directory: Path) -> list['Workflow']:
+
+        workflows = {path.resolve(): cls.__parse(path) for path in sorted([*directory.glob('*.yml'), *directory.glob('*.yaml')])}
+        repo = directory.parent.parent
+        ordered = []
+        visited = set()
+
+        # Sorts workflows based on what is needed first
+
+        def visit(path: Path) -> None:
+            if path in visited:
+                return
+
+            visited.add(path)
+
+            for job in workflows[path].jobs:
+                called = (repo / job.uses).resolve() if job.uses and job.uses.startswith('./') else None
+
+                if called in workflows:
+                    visit(called)
+
+            ordered.append(workflows[path])
+
+        for path in workflows:
+            visit(path)
+
+        return ordered
+
+
+    # NOTE: Possibly unneeded, still needs review
+    @classmethod
     def find(cls, directory: Path, name: str, job: str | None = None) -> 'Workflow':
 
-        for path in [*directory.glob('*.yml'), *directory.glob('*.yaml')]:
-            workflow = cls.parse(path)
-
+        for workflow in cls.find_all(directory):
             if workflow.name == name and (job is None or any(candidate.name == job for candidate in workflow.jobs)):
                 return workflow
 
         raise ValueError(f'Workflow "{name}" not found.' if job is None else f'Job "{job}" not found in workflow "{name}".')
 
-    def excerpt(self, job: str) -> str:
+    def get_job_yaml(self, job: str) -> str:
 
-        lines = self.path.read_text().splitlines()
-        blocks, heading, key, value = self.__find(job)
-        numbers = [number for name in INHERITED if name in blocks for number in self.__span(*blocks[name])]
-        numbers += [heading.start_mark.line, *self.__span(key, value)]
+        text = self.path.read_text()
+        lines = text.splitlines()
+        jobs_key, jobs = next((key, value) for key, value in yaml.compose(text).value if key.value == 'jobs')
+        key, value = next((key, value) for key, value in jobs.value if key.value == job)
+        numbers = [jobs_key.start_mark.line, *range(key.start_mark.line, value.end_mark.line + (1 if value.end_mark.column else 0))]
 
         return '\n'.join(f'{number + 1}\t{lines[number]}' for number in numbers)
 
-    def __find(self, job: str):
-
-        blocks = {key.value: (key, value) for key, value in yaml.compose(self.path.read_text()).value}
-        heading, jobs = blocks['jobs']
-        key, value = next((key, value) for key, value in jobs.value if key.value == job)
-
-        return blocks, heading, key, value
-
-    def __span(self, key: yaml.Node, value: yaml.Node) -> range:
-
-        return range(key.start_mark.line, value.end_mark.line + (1 if value.end_mark.column else 0))
-
     @classmethod
-    def parse(cls, path: Path) -> 'Workflow':
+    def __parse(cls, path: Path) -> 'Workflow':
 
         if not path.exists():
             raise FileNotFoundError(f'Workflow file not found: {path}')
@@ -143,18 +144,12 @@ class Workflow(BaseModel):
             needs = data.get('needs', [])
             steps = [Step.parse(index, step) for index, step in enumerate(data.get('steps', []))]
 
-            outer = [workflow_contents.get('env'), data.get('env')]
-            env = references(*outer, *[step.env for step in steps])
-
             jobs.append(Job(
                 name=name,
                 path=path,
                 needs=[needs] if isinstance(needs, str) else needs,
                 steps=steps,
                 uses=data.get('uses'),
-                env=sorted(env),
-                secrets={key: secrets for key, secrets in env.items() if secrets},
-                scopes={step.id: references(*outer, step.env) for step in steps},
                 secret_names=sorted(set(SECRET_REFERENCE.findall(yaml.safe_dump(data))))
             ))
 

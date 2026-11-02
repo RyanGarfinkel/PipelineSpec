@@ -55,6 +55,8 @@ class Settings(BaseSettings):
 
     repo: Path | None = Field(default=None)
     variants_only: bool = Field(default=False)
+    variants: Path | None = Field(default=None)
+    verbose: bool = Field(default=False)
     file: FileSettings = Field(default_factory=FileSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)

@@ -1,6 +1,8 @@
 from pipelinespec.constraint.tools import constraint_tools
-from pipelinespec.models import Constraints, Trigger
+from pipelinespec.models import JobConstraints, Workflow, WorkflowTrigger
 from pydantic import ValidationError
+from pipelinespec import settings
+import importlib
 import pytest
 import json
 
@@ -10,7 +12,7 @@ def term(name, op, value):
 
 def test_triggers():
 
-    found: list[Trigger] = []
+    found: list[WorkflowTrigger] = []
     tools = {tool.name: tool for tool in constraint_tools.triggers(found)}
     push = {'event': 'push', 'payload': {'ref': 'refs/heads/release/1.0'}}
 
@@ -21,9 +23,28 @@ def test_triggers():
     assert tools['add_trigger'].invoke({**push, 'payload': {'ref': 'refs/heads/release/2.0'}}) == 'Recorded successfully. It replaced the earlier example for "push".'
     assert json.loads(tools['recorded'].invoke({})) == [{'event': 'push', 'payload': {'ref': 'refs/heads/release/2.0'}}, {'event': 'schedule', 'payload': {}}]
 
+def test_agent_builds_its_messages_from_the_objects(tmp_path, monkeypatch):
+
+    module = importlib.import_module('pipelinespec.constraint.agent')
+    repo = tmp_path / 'repo'
+    directory = repo / '.github' / 'workflows'
+    directory.mkdir(parents=True)
+    (directory / 'ci.yml').write_text('name: CI\non: push\njobs:\n  build:\n    runs-on: x\n')
+    monkeypatch.setattr(settings, 'repo', repo)
+
+    calls = []
+    monkeypatch.setattr(module.ConstraintAgent.__wrapped__, '_ConstraintAgent__run', lambda self, name, prompt, tools, task, problem, save: calls.append((name, task)))
+
+    workflow = Workflow.find_all(directory)[0]
+    module.constraint_agent.find_workflow_triggers(workflow)
+    module.constraint_agent.find_job_constraints(workflow, workflow.jobs[0])
+
+    assert calls[0][0] == 'agents/CI/workflow_agent' and calls[0][1].startswith('Workflow: "CI" (.github/workflows/ci.yml)\n\nname: CI')
+    assert calls[1][0] == 'agents/CI/build/constraint_agent' and 'Target job id: "build"' in calls[1][1] and calls[1][1].endswith('3\tjobs:\n4\t  build:\n5\t    runs-on: x')
+
 def test_tools():
 
-    constraints = Constraints(events=['push', 'workflow_dispatch'])
+    constraints = JobConstraints()
     tools = {tool.name: tool for tool in constraint_tools.get(constraints)}
 
     assert set(tools) == {'add_gate', 'add_variable', 'add_unsolved', 'add_constant', 'recorded'}
@@ -71,7 +92,7 @@ def test_tools():
 
     shown = json.loads(tools['recorded'].invoke({}))
 
-    assert shown['events'] == ['push', 'workflow_dispatch']
+    assert 'events' not in shown
     assert [gate['name'] for gate in shown['gates']] == ['run.sh.upload', 'job.if', 'step.if', 'num.if', 'sha.if']
     assert shown['gates'][2]['any_of'] == [[term('dry_run', '==', False)]]
     assert set(shown['variables']) == {'ref', 'dry_run', 'count', 'sha'}

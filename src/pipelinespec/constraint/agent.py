@@ -1,4 +1,4 @@
-from pipelinespec.models import Constraints, Trigger, Workflow
+from pipelinespec.models import Job, JobConstraints, Workflow, WorkflowTrigger, slug
 from langchain_core.tools import BaseTool
 from singleton_decorator import singleton
 from langchain.agents import create_agent
@@ -13,11 +13,10 @@ import json
 @singleton
 class ConstraintAgent:
 
-    def find_workflow_triggers(self, workflow: str) -> list[Trigger]:
+    def find_workflow_triggers(self, workflow: Workflow) -> list[WorkflowTrigger]:
 
-        parsed = Workflow.find(settings.repo / '.github' / 'workflows', workflow)
-        triggers: list[Trigger] = []
-        task = f'Workflow: "{workflow}" ({parsed.path.relative_to(settings.repo)})\n\n{parsed.path.read_text()}'
+        triggers: list[WorkflowTrigger] = []
+        task = f'Workflow: "{workflow.name}" ({workflow.path.relative_to(settings.repo)})\n\n{workflow.path.read_text()}'
 
         def problem(_: RecordCallbackHandler) -> str | None:
 
@@ -25,19 +24,16 @@ class ConstraintAgent:
 
         def save() -> None:
 
-            self.__save(workflow, lambda entry: entry.update(triggers=[trigger.model_dump(mode='json') for trigger in triggers]))
+            self.__save(workflow.name, lambda entry: entry.update(triggers=[trigger.model_dump(mode='json') for trigger in triggers]))
 
-        log(f'Finding how to trigger {workflow}...')
-        self.__run('workflow_agent', WORKFLOW, constraint_tools.triggers(triggers), task, problem, save)
-        log(f'Found {len(triggers)} ways to trigger {workflow}.')
+        self.__run(f'agents/{slug(workflow.name)}/workflow_agent', WORKFLOW, constraint_tools.triggers(triggers), task, problem, save)
 
         return triggers
 
-    def find_job_constraints(self, workflow: str, job: str, events: list[str]) -> Constraints:
+    def find_job_constraints(self, workflow: Workflow, job: Job) -> JobConstraints:
 
-        parsed = Workflow.find(settings.repo / '.github' / 'workflows', workflow, job)
-        constraints = Constraints(events=events)
-        task = f'Workflow: "{workflow}" ({parsed.path.relative_to(settings.repo)})\nTarget job id: "{job}"\nHEAD commit of the repository: {git.head() or "unknown"}\nName of the repository: {git.repository() or "unknown"}\n\n{parsed.excerpt(job)}'
+        constraints = JobConstraints()
+        task = f'Workflow: "{workflow.name}" ({workflow.path.relative_to(settings.repo)})\nTarget job id: "{job.name}"\nHEAD commit of the repository: {git.head() or "unknown"}\nParent of the HEAD commit: {git.parent() or "none"}\nName of the repository: {git.repository() or "unknown"}\n\n{workflow.get_job_yaml(job.name)}'
 
         def problem(recorder: RecordCallbackHandler) -> str | None:
 
@@ -53,11 +49,9 @@ class ConstraintAgent:
 
         def save() -> None:
 
-            self.__save(workflow, lambda entry: entry['jobs'].update({job: constraints.model_dump(mode='json')}))
+            self.__save(workflow.name, lambda entry: entry['jobs'].update({job.name: constraints.model_dump(mode='json')}))
 
-        log(f'Extracting the conditions of {job} in {workflow}...')
-        self.__run('constraint_agent', JOB,[*shared_tools.get(), *constraint_tools.get(constraints)], task, problem, save)
-        log(f'Found {len(constraints.gates)} gates, {len(constraints.variables)} variables, {len(constraints.constants)} constants and {len(constraints.unsolved)} unsolved conditions.')
+        self.__run(f'agents/{slug(workflow.name)}/{slug(job.name)}/constraint_agent', JOB, [*shared_tools.get(), *constraint_tools.get(constraints)], task, problem, save)
 
         return constraints
 
@@ -69,7 +63,7 @@ class ConstraintAgent:
 
         for _ in range(settings.agent.retries):
             try:
-                state = agent.invoke({'messages': messages}, config={'recursion_limit': settings.agent.max_steps * 2 + 2, 'callbacks': [ProgressCallbackHandler('Constraint Agent'), recorder, guard]})
+                state = agent.invoke({'messages': messages}, config={'recursion_limit': settings.agent.max_steps * 2 + 2, 'callbacks': [recorder, guard]})
             finally:
                 save()
 

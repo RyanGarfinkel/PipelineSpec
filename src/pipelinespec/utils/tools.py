@@ -2,6 +2,7 @@ from langchain_core.tools import BaseTool, ToolException, tool
 from singleton_decorator import singleton
 from pipelinespec import settings
 from pathlib import Path
+import warnings
 import os
 import re
 
@@ -88,7 +89,9 @@ class SharedTools:
             raise ToolException('Error: grep only searches a single file; use glob to list the files in a directory.')
 
         try:
-            compiled_pattern = re.compile(pattern, re.IGNORECASE)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                compiled_pattern = re.compile(pattern, re.IGNORECASE)
         except re.error as problem:
             raise ToolException(f'Error: invalid regular expression: {problem}')
 
