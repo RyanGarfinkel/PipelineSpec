@@ -1,4 +1,4 @@
-from pipelinespec.models import Answer, Check, Constraints, Gate, Report
+from pipelinespec.models import Check, Gate, JobConstraints, Report, Constraints
 from singleton_decorator import singleton
 from pipelinespec.tools import smt
 from typing import Any
@@ -9,30 +9,30 @@ Location = tuple[str, int, int]
 @singleton
 class Verifier:
 
-    def verify(self, truth: dict[str, Answer], output: dict[str, Answer]) -> Report:
+    def verify(self, truth: dict[str, Constraints], output: dict[str, Constraints]) -> Report:
 
         checks: list[Check] = []
 
-        for workflow, answer in output.items():
+        for workflow, found in output.items():
             if workflow not in truth:
                 checks.append(Check(name=workflow, passed=False, detail='The workflow is not in the ground truth.'))
                 continue
 
-            checks += self.__triggers(workflow, truth[workflow], answer)
+            checks += self.__triggers(workflow, truth[workflow], found)
 
-            for job, constraints in answer.jobs.items():
+            for job, constraints in found.jobs.items():
                 if job not in truth[workflow].jobs:
                     checks.append(Check(name=f'{workflow}/{job}', passed=False, detail='The job is not in the ground truth.'))
                     continue
 
-                checks += self.__job(f'{workflow}/{job}', truth[workflow].jobs[job], constraints)
+                checks += self.__job(f'{workflow}/{job}', truth[workflow].jobs[job], constraints, [trigger.event for trigger in truth[workflow].triggers])
 
         if not checks:
             checks.append(Check(name='output', passed=False, detail='The output has no workflow to verify.'))
 
         return Report(checks=tuple(checks))
 
-    def __triggers(self, workflow: str, expected: Answer, actual: Answer) -> list[Check]:
+    def __triggers(self, workflow: str, expected: Constraints, actual: Constraints) -> list[Check]:
 
         wanted, found = {trigger.event for trigger in expected.triggers}, {trigger.event for trigger in actual.triggers}
         missing, extra = sorted(wanted - found), sorted(found - wanted)
@@ -63,7 +63,7 @@ class Verifier:
 
         return [problem for key, value in expected.items() for problem in (self.__subset(value, actual[key], f'{path}.{key}') if key in actual else [f'{path}.{key} is missing'])]
 
-    def __job(self, name: str, expected: Constraints, actual: Constraints) -> list[Check]:
+    def __job(self, name: str, expected: JobConstraints, actual: JobConstraints, events: list[str]) -> list[Check]:
 
         checks: list[Check] = []
         groups: dict[str, list[Gate]] = {}
@@ -83,7 +83,7 @@ class Verifier:
                 matched[location].append(gate)
 
         for location, gates in groups.items():
-            checks.append(self.__gates(f'{name}: gate {location}', expected, gates, actual, matched[location]))
+            checks.append(self.__gates(f'{name}: gate {location}', expected, gates, actual, matched[location], events))
 
         checks.append(Check(name=f'{name}: no extra gates', passed=not extra, detail=f'gates at {extra} are not in the ground truth' if extra else ''))
 
@@ -93,13 +93,13 @@ class Verifier:
 
         return checks
 
-    def __gates(self, name: str, expected: Constraints, wanted: list[Gate], actual: Constraints, found: list[Gate]) -> Check:
+    def __gates(self, name: str, expected: JobConstraints, wanted: list[Gate], actual: JobConstraints, found: list[Gate], events: list[str]) -> Check:
 
         if not found:
             return Check(name=name, passed=False, detail='no gate at this location')
 
         try:
-            same = smt.equivalent(expected, wanted, actual, found)
+            same = smt.equivalent(expected, wanted, actual, found, events)
         except ValueError as error:
             return Check(name=name, passed=False, detail=str(error))
 

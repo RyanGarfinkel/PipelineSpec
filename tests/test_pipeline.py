@@ -1,5 +1,5 @@
 from pipelinespec.models import AccessMap, JobConstraints, TraceResult, Variant, Workflow, WorkflowTrigger
-from pipelinespec.core import Tracing, mapper
+from pipelinespec.core import access_map, trace
 from pipelinespec.cli.main import main
 from click.testing import CliRunner
 from pipelinespec import settings
@@ -179,12 +179,12 @@ def test_tracing_each_variant_and_saving_builds_the_map_from_variants_alone(tmp_
     monkeypatch.setattr(settings.file, 'output', output)
 
     variants = module.pipeline.load_variants()
-    results = []
+    monkeypatch.setattr(access_map, 'jobs', {})
 
-    with Tracing(len(variants)) as tracer:
-        for variant in variants:
-            results.append(tracer.trace(variant))
-            mapper.save(mapper.build(results))
+    with trace(variants) as pending:
+        for trial, result in pending:
+            access_map.add(trial, result)
+            access_map.save()
 
     assert traced == [('build', {'ref': 'r'})] * 2
 
@@ -237,13 +237,14 @@ def test_traces_every_job_except_a_call_site_and_maps_them(tmp_path, monkeypatch
     monkeypatch.setattr(settings.file, 'output', tmp_path)
 
     variants = module.pipeline.get_variants(Workflow.find_all(settings.repo / '.github' / 'workflows'))
-    results = []
 
-    with Tracing(len(variants)) as tracer:
-        for variant in variants:
-            results.append(tracer.trace(variant))
+    monkeypatch.setattr(access_map, 'jobs', {})
 
-    mapper.save(mapper.build(results))
+    with trace(variants) as pending:
+        for trial, result in pending:
+            access_map.add(trial, result)
+
+    access_map.save()
 
     assert traced == [('Shared', 'lint')] * 2 + [('CI', 'build')] * 2
 

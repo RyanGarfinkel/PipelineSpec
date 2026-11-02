@@ -1,11 +1,11 @@
 from pipelinespec.utils.guard import GuardCallbackHandler, MAX_ERRORS, REJECTED
 from pipelinespec.constraint.tools import constraint_tools
-from pipelinespec.models import Constraints
+from pipelinespec.models import JobConstraints
 import pytest
 
 def test_guard_counts_the_rejections_of_the_tools():
 
-    tools = {tool.name: tool for tool in constraint_tools.get(Constraints())}
+    tools = {tool.name: tool for tool in constraint_tools.get(JobConstraints())}
     rejection = tools['add_variable'].invoke({'name': 'unused', 'target': 'payload.number', 'values': [1, 2]})
     guard = GuardCallbackHandler()
 

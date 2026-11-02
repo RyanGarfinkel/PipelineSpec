@@ -30,7 +30,7 @@ class Mitm:
             '-s', str(settings.trace.addon),
         ]
 
-        process = subprocess.Popen(cmd, env={**os.environ, 'RUN_DIR': str(run_dir.resolve())})
+        process = subprocess.Popen(cmd, env={**os.environ, 'RUN_DIR': str(run_dir.resolve()), 'BODY_LIMIT': str(settings.trace.body_limit)})
 
         try:
             self.__wait(port, process)

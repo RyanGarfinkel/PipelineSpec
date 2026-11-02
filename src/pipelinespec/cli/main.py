@@ -1,5 +1,5 @@
+from pipelinespec.core import pipeline, trace, access_map
 from pipelinespec.config import TraceSettings
-from pipelinespec.core import pipeline
 from pipelinespec.models import Workflow
 from pipelinespec import log, settings
 from pipelinespec.tools import git
@@ -67,9 +67,14 @@ def __run(trace_only: bool) -> None:
         return
 
     # Tracing
-    path = pipeline.trace(variants)
+    log(f'Beggining trace...')
 
-    # access map
+    with trace(variants) as pending:
+        for trial, result in pending:
+            access_map.add(trial, result)
+            access_map.save()
+
+    log(f'Trace complete. Access map saved to {access_map.save()}.', style='green')
 
 @click.command()
 @click.option('--repo', '-r', required=True, help='Path to the GitHub repository.')
@@ -107,7 +112,7 @@ def main(repo: str, certificate: str | None, container: str | None, arch: str | 
     if verbose:
         log(f'Using model {settings.agent.model} from {settings.agent.provider}')
 
-    pipeline.run()
+    __run(trace_only)
 
 if __name__ == '__main__':
     main()

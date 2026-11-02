@@ -1,4 +1,4 @@
-from pipelinespec.models import Answer
+from pipelinespec.models import Constraints
 from pipelinespec.core import verifier
 from pydantic import TypeAdapter
 from pipelinespec import console
@@ -11,8 +11,8 @@ import click
 @click.argument('output', required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
 def main(truth: Path, output: Path) -> None:
 
-    answers = TypeAdapter(dict[str, Answer])
-    report = verifier.verify(answers.validate_json(truth.read_text()), answers.validate_json(output.read_text()))
+    adapter = TypeAdapter(dict[str, Constraints])
+    report = verifier.verify(adapter.validate_json(truth.read_text()), adapter.validate_json(output.read_text()))
     table = Table('Check', 'Result', 'Detail', show_lines=False)
 
     for check in report.checks:
