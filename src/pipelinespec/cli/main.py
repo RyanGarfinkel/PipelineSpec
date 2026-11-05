@@ -1,4 +1,4 @@
-from pipelinespec.core import pipeline, trace, access_map
+from pipelinespec.core import pipeline, runner, access_map
 from pipelinespec.config import TraceSettings
 from pipelinespec.models import Workflow
 from pipelinespec import log, settings
@@ -69,10 +69,9 @@ def __run(trace_only: bool) -> None:
     # Tracing
     log(f'Beggining trace...')
 
-    with trace(variants) as pending:
-        for trial, result in pending:
-            access_map.add(trial, result)
-            access_map.save()
+    for trace in runner.variant_traces(workflows, variants):
+        access_map.add(trace)
+        access_map.save()
 
     log(f'Trace complete. Access map saved to {access_map.save()}.', style='green')
 

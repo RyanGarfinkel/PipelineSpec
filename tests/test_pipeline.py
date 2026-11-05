@@ -1,5 +1,5 @@
 from pipelinespec.models import AccessMap, JobConstraints, TraceResult, Variant, Workflow, WorkflowTrigger
-from pipelinespec.core import access_map, trace
+from pipelinespec.core import access_map, runner
 from pipelinespec.cli.main import main
 from click.testing import CliRunner
 from pipelinespec import settings
@@ -82,20 +82,20 @@ def test_every_workflow_then_its_jobs(tmp_path, monkeypatch):
 def test_trace_only_reads_variants_and_never_calls_the_agent_or_z3(tmp_path, monkeypatch):
 
     module = importlib.import_module('pipelinespec.core.pipeline')
-    loop = importlib.import_module('pipelinespec.core.loop')
+    runner_module = importlib.import_module('pipelinespec.core.runner')
     agent, traced = FakeAgent(), []
 
     class Tracer:
 
-        def run(self, config):
+        def run(self, _, variant, __):
 
-            traced.append((config.workflow, config.job, config.context.event))
+            traced.append((variant.workflow, variant.job, variant.context.event))
 
-            return TraceResult(id=uuid4(), path=Path('ci.yml'), job=config.job, outcome='success')
+            return TraceResult(id=uuid4(), path=Path('ci.yml'), job=variant.job, outcome='success')
 
     monkeypatch.setattr(module, 'constraint_agent', agent)
-    monkeypatch.setattr(loop, 'tracer', Tracer())
-    monkeypatch.setattr(loop, 'subtractor', NoSubtraction())
+    monkeypatch.setattr(runner_module, 'tracer', Tracer())
+    monkeypatch.setattr(runner_module, 'subtractor', NoSubtraction())
 
     class NoSolver:
 
@@ -159,7 +159,7 @@ def test_load_variants_reads_the_list(tmp_path, monkeypatch):
 def test_tracing_each_variant_and_saving_builds_the_map_from_variants_alone(tmp_path, monkeypatch):
 
     module = importlib.import_module('pipelinespec.core.pipeline')
-    loop = importlib.import_module('pipelinespec.core.loop')
+    runner_module = importlib.import_module('pipelinespec.core.runner')
     saved = saved_run(tmp_path)
     output = tmp_path / 'out'
     output.mkdir()
@@ -167,24 +167,25 @@ def test_tracing_each_variant_and_saving_builds_the_map_from_variants_alone(tmp_
 
     class Tracer:
 
-        def run(self, config):
+        def run(self, _, variant, __):
 
-            traced.append((config.job, config.context.payload))
+            traced.append((variant.job, variant.context.payload))
 
-            return TraceResult(id=uuid4(), path=Path('ci.yml'), job=config.job, outcome='success')
+            return TraceResult(id=uuid4(), path=Path('ci.yml'), job=variant.job, outcome='success')
 
-    monkeypatch.setattr(loop, 'tracer', Tracer())
-    monkeypatch.setattr(loop, 'subtractor', NoSubtraction())
+    monkeypatch.setattr(runner_module, 'tracer', Tracer())
+    monkeypatch.setattr(runner_module, 'subtractor', NoSubtraction())
     monkeypatch.setattr(settings, 'variants', saved)
     monkeypatch.setattr(settings.file, 'output', output)
 
     variants = module.pipeline.load_variants()
+    workflows = Workflow.find_all(repository(tmp_path) / '.github' / 'workflows')
     monkeypatch.setattr(access_map, 'jobs', {})
 
-    with trace(variants) as pending:
-        for trial, result in pending:
-            access_map.add(trial, result)
-            access_map.save()
+    for trace in runner.variant_traces(workflows, variants):
+        access_map.add(trace)
+
+    access_map.save()
 
     assert traced == [('build', {'ref': 'r'})] * 2
 
@@ -218,31 +219,31 @@ def test_trace_only_flags_must_come_together(tmp_path):
 def test_traces_every_job_except_a_call_site_and_maps_them(tmp_path, monkeypatch):
 
     module = importlib.import_module('pipelinespec.core.pipeline')
-    loop = importlib.import_module('pipelinespec.core.loop')
+    runner_module = importlib.import_module('pipelinespec.core.runner')
     traced = []
 
     class Tracer:
 
-        def run(self, config):
+        def run(self, _, variant, __):
 
-            traced.append((config.workflow, config.job))
+            traced.append((variant.workflow, variant.job))
 
-            return TraceResult(id=uuid4(), path=Path('ci.yml'), job=config.job, outcome='success')
+            return TraceResult(id=uuid4(), path=Path('ci.yml'), job=variant.job, outcome='success')
 
     monkeypatch.setattr(module, 'constraint_agent', FakeAgent())
-    monkeypatch.setattr(loop, 'tracer', Tracer())
-    monkeypatch.setattr(loop, 'subtractor', NoSubtraction())
+    monkeypatch.setattr(runner_module, 'tracer', Tracer())
+    monkeypatch.setattr(runner_module, 'subtractor', NoSubtraction())
     monkeypatch.setattr(settings, 'repo', repository(tmp_path))
     monkeypatch.setattr(settings, 'variants_only', False)
     monkeypatch.setattr(settings.file, 'output', tmp_path)
 
-    variants = module.pipeline.get_variants(Workflow.find_all(settings.repo / '.github' / 'workflows'))
+    workflows = Workflow.find_all(settings.repo / '.github' / 'workflows')
+    variants = module.pipeline.get_variants(workflows)
 
     monkeypatch.setattr(access_map, 'jobs', {})
 
-    with trace(variants) as pending:
-        for trial, result in pending:
-            access_map.add(trial, result)
+    for trace in runner.variant_traces(workflows, variants):
+        access_map.add(trace)
 
     access_map.save()
 
