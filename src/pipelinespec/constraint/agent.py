@@ -1,4 +1,4 @@
-from pipelinespec.models import Job, JobConstraints, Workflow, WorkflowTrigger, slug
+from pipelinespec.models import Job, JobConstraints, Workflow, WorkflowTrigger
 from langchain_core.tools import BaseTool
 from singleton_decorator import singleton
 from langchain.agents import create_agent
@@ -13,8 +13,9 @@ import json
 @singleton
 class ConstraintAgent:
 
-    def find_workflow_triggers(self, workflow: Workflow) -> list[WorkflowTrigger]:
+    def find_workflow_triggers(self, workflow: Workflow, sample: int | None = None) -> list[WorkflowTrigger]:
 
+        suffix = self.__suffix(sample)
         triggers: list[WorkflowTrigger] = []
         task = f'Workflow: "{workflow.name}" ({workflow.path.relative_to(settings.repo)})\n\n{workflow.path.read_text()}'
 
@@ -24,14 +25,15 @@ class ConstraintAgent:
 
         def save() -> None:
 
-            self.__save(workflow.name, lambda entry: entry.update(triggers=[trigger.model_dump(mode='json') for trigger in triggers]))
+            self.__save(f'constraints{suffix}.json', workflow.name, lambda entry: entry.update(triggers=[trigger.model_dump(mode='json') for trigger in triggers]))
 
-        self.__run(f'agents/{slug(workflow.name)}/workflow_agent', WORKFLOW, constraint_tools.triggers(triggers), task, problem, save)
+        self.__run(f'agents/{slug(workflow.name)}/workflow_agent{suffix}', WORKFLOW, constraint_tools.triggers(triggers), task, problem, save)
 
         return triggers
 
-    def find_job_constraints(self, workflow: Workflow, job: Job) -> JobConstraints:
+    def find_job_constraints(self, workflow: Workflow, job: Job, sample: int | None = None) -> JobConstraints:
 
+        suffix = self.__suffix(sample)
         constraints = JobConstraints()
         task = f'Workflow: "{workflow.name}" ({workflow.path.relative_to(settings.repo)})\nTarget job id: "{job.name}"\nHEAD commit of the repository: {git.head() or "unknown"}\nParent of the HEAD commit: {git.parent() or "none"}\nName of the repository: {git.repository() or "unknown"}\n\n{workflow.get_job_yaml(job.name)}'
 
@@ -49,9 +51,9 @@ class ConstraintAgent:
 
         def save() -> None:
 
-            self.__save(workflow.name, lambda entry: entry['jobs'].update({job.name: constraints.model_dump(mode='json')}))
+            self.__save(f'constraints{suffix}.json', workflow.name, lambda entry: entry['jobs'].update({job.name: constraints.model_dump(mode='json')}))
 
-        self.__run(f'agents/{slug(workflow.name)}/{slug(job.name)}/constraint_agent', JOB, [*shared_tools.get(), *constraint_tools.get(constraints)], task, problem, save)
+        self.__run(f'agents/{slug(workflow.name)}/{slug(job.name)}/constraint_agent{suffix}', JOB, [*shared_tools.get(), *constraint_tools.get(constraints)], task, problem, save)
 
         return constraints
 
@@ -80,9 +82,13 @@ class ConstraintAgent:
 
         raise RuntimeError(f'The agent did not finish its work: {issue}')
 
-    def __save(self, workflow: str, change: Callable[[dict], None]) -> None:
+    def __suffix(self, sample: int | None) -> str:
 
-        path = settings.file.output / 'constraints.json'
+        return '' if sample is None else f'_{sample}'
+
+    def __save(self, name: str, workflow: str, change: Callable[[dict], None]) -> None:
+
+        path = settings.file.output / name
         path.parent.mkdir(parents=True, exist_ok=True)
 
         content = json.loads(path.read_text()) if path.exists() else {}

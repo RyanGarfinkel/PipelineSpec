@@ -12,9 +12,8 @@ class TraceSettings(BaseSettings):
 
     container: str = Field(default='ubuntu-latest=catthehacker/ubuntu:act-latest')
     arch: Literal['linux/amd64', 'linux/arm64'] = Field(default='linux/arm64')
-    ebpf_image: str = Field(default='pipeline-ebpf:latest')
+    sidecar_image: str = Field(default='pipeline-sidecar:latest')
     mitm_certificate: Path | None = Field(default=None, validation_alias='CERTIFICATE')
-    addon: Path = Field(default=Path(__file__).resolve().parent / 'docker' / 'addon.py', frozen=True)
     body_limit: int = Field(default=2048, ge=0)
 
     @field_validator('container')
@@ -54,8 +53,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(validate_assignment=True)
 
     repo: Path | None = Field(default=None)
-    variants_only: bool = Field(default=False)
-    variants: Path | None = Field(default=None)
+    constraints_only: bool = Field(default=False)
+    constraints: Path | None = Field(default=None)
     verbose: bool = Field(default=False)
     file: FileSettings = Field(default_factory=FileSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
