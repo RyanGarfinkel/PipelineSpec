@@ -1,0 +1,141 @@
+tracepoint:syscalls:sys_enter_open / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->filename);
+	@f[tid] = args->flags;
+}
+
+tracepoint:syscalls:sys_exit_open / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("open pid=%d ppid=%d ns=%u comm=<%s> flags=%d dfd=-100 fd=%d %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @f[tid], args->ret, @a[tid]);
+	}
+	delete(@a[tid]);
+	delete(@f[tid]);
+}
+
+tracepoint:syscalls:sys_enter_creat / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->pathname);
+}
+
+tracepoint:syscalls:sys_exit_creat / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("open pid=%d ppid=%d ns=%u comm=<%s> flags=577 dfd=-100 fd=%d %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, args->ret, @a[tid]);
+	}
+	delete(@a[tid]);
+}
+
+tracepoint:syscalls:sys_enter_newstat,
+tracepoint:syscalls:sys_enter_newlstat / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->filename);
+}
+
+tracepoint:syscalls:sys_exit_newstat,
+tracepoint:syscalls:sys_exit_newlstat / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("stat pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @a[tid]);
+	}
+	delete(@a[tid]);
+}
+
+tracepoint:syscalls:sys_enter_access / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->filename);
+}
+
+tracepoint:syscalls:sys_exit_access / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("access pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @a[tid]);
+	}
+	delete(@a[tid]);
+}
+
+tracepoint:syscalls:sys_enter_readlink / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->path);
+}
+
+tracepoint:syscalls:sys_exit_readlink / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("readlink pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @a[tid]);
+	}
+	delete(@a[tid]);
+}
+
+tracepoint:syscalls:sys_enter_mkdir,
+tracepoint:syscalls:sys_enter_rmdir,
+tracepoint:syscalls:sys_enter_unlink / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->pathname);
+}
+
+tracepoint:syscalls:sys_exit_mkdir,
+tracepoint:syscalls:sys_exit_rmdir,
+tracepoint:syscalls:sys_exit_unlink / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("write pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @a[tid]);
+	}
+	delete(@a[tid]);
+}
+
+tracepoint:syscalls:sys_enter_chmod,
+tracepoint:syscalls:sys_enter_chown,
+tracepoint:syscalls:sys_enter_lchown / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->filename);
+}
+
+tracepoint:syscalls:sys_exit_chmod,
+tracepoint:syscalls:sys_exit_chown,
+tracepoint:syscalls:sys_exit_lchown / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("write pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @a[tid]);
+	}
+	delete(@a[tid]);
+}
+
+tracepoint:syscalls:sys_enter_rename,
+tracepoint:syscalls:sys_enter_link / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@a[tid] = str(args->oldname);
+	@b[tid] = str(args->newname);
+}
+
+tracepoint:syscalls:sys_exit_rename,
+tracepoint:syscalls:sys_exit_link / @a[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("write pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\nwrite pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @a[tid], pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @b[tid]);
+	}
+	delete(@a[tid]);
+	delete(@b[tid]);
+}
+
+tracepoint:syscalls:sys_enter_symlink / curtask->nsproxy->pid_ns_for_children->ns.inum != 4026531836 /
+{
+	@b[tid] = str(args->newname);
+}
+
+tracepoint:syscalls:sys_exit_symlink / @b[tid] != "" /
+{
+	if (args->ret >= 0)
+	{
+		printf("write pid=%d ppid=%d ns=%u comm=<%s> dfd=-100 %s\n", pid, curtask->real_parent->tgid, curtask->nsproxy->pid_ns_for_children->ns.inum, comm, @b[tid]);
+	}
+	delete(@b[tid]);
+}

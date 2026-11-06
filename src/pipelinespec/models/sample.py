@@ -1,8 +1,20 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
+from datetime import datetime
 
 class Sample(BaseModel):
 
-    name: str = Field(..., frozen=True)
-    clone_url: str = Field(..., frozen=True)
-    api_url: str = Field(..., frozen=True)
-    workflows: list[str] = Field(..., frozen=True)
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    clone_url: str
+    commit: str
+    commit_date: datetime
+    stars: int
+    forks: int
+    topics: list[str]
+    primary_language: str | None
+    languages: list[str]
+    workflows: int
+    jobs: int
+    files: int
+    lines: int

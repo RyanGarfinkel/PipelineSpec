@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 from pathlib import Path
+import platform
 import re
 
 class FileSettings(BaseModel):
@@ -11,7 +12,7 @@ class FileSettings(BaseModel):
 class TraceSettings(BaseSettings):
 
     container: str = Field(default='ubuntu-latest=catthehacker/ubuntu:act-latest')
-    arch: Literal['linux/amd64', 'linux/arm64'] = Field(default='linux/arm64')
+    arch: Literal['linux/amd64', 'linux/arm64'] = Field(default_factory=lambda: 'linux/amd64' if platform.machine().lower() in ('x86_64', 'amd64') else 'linux/arm64')
     sidecar_image: str = Field(default='pipeline-sidecar:latest')
     mitm_certificate: Path | None = Field(default=None, validation_alias='CERTIFICATE')
     body_limit: int = Field(default=2048, ge=0)

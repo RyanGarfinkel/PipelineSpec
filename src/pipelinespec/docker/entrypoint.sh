@@ -7,7 +7,14 @@ export BPFTRACE_MAX_MAP_KEYS=8192
 export BPFTRACE_MAX_BPF_PROGS=1024
 export BPFTRACE_MAX_PROBES=1024
 
-bpftrace -B full -o /tmp/ebpf.txt /pspec/trace.bt &
+script=/pspec/trace.bt
+
+if [ -d /sys/kernel/tracing/events/syscalls/sys_enter_open ]; then
+    cat /pspec/trace.bt /pspec/legacy.bt > /tmp/trace.bt
+    script=/tmp/trace.bt
+fi
+
+bpftrace -B full -o /tmp/ebpf.txt "$script" &
 tracer=$!
 
 mitmdump --listen-port 8080 --set confdir=/pspec/mitm --set connection_strategy=lazy -q -s /pspec/addon.py >/tmp/mitm.log 2>&1 &
