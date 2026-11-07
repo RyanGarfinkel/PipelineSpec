@@ -37,7 +37,7 @@ class AgentSettings(BaseSettings):
     model: str = Field(default='claude-sonnet-5-5')
     url: str | None = Field(default=None)
     max_items: int = Field(default=100, ge=1)
-    max_steps: int = Field(default=40, ge=1)
+    max_steps: int = Field(default=50, ge=1)
     max_tokens: int = Field(default=4096, ge=1)
 
     @property
