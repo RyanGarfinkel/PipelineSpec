@@ -154,7 +154,7 @@ class Workflow(BaseModel):
             ))
 
         return cls(
-            name=workflow_contents.get('name', ''),
+            name=workflow_contents.get('name') or path.name,
             path=path,
             jobs=jobs
         )

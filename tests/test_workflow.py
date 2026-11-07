@@ -17,6 +17,15 @@ def names(directory):
 
     return [workflow.name for workflow in Workflow.find_all(directory)]
 
+def test_an_unnamed_workflow_is_named_after_its_file(tmp_path):
+
+    directory = workflows(tmp_path)
+
+    for file in ('first.yml', 'second.yaml'):
+        (directory / file).write_text(f'on: push\njobs:\n  j:\n{STEPS}')
+
+    assert sorted(names(directory)) == ['first.yml', 'second.yaml']
+
 def test_job_yaml_is_only_the_job_with_file_line_numbers(tmp_path):
 
     directory = workflows(tmp_path)

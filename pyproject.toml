@@ -20,6 +20,13 @@ dependencies = [
 ]
 
 [dependency-groups]
+analysis = [
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.2",
+    "nbconvert>=7.17.2",
+    "pandas>=3.1.1",
+    "scipy>=1.18.1",
+]
 dev = [
     "pytest>=9.1.1",
 ]
@@ -36,6 +43,7 @@ sample = "pipelinespec.cli.sample:main"
 pipelinespec = "pipelinespec.cli.main:main"
 verify-constraints = "pipelinespec.cli.verify:main"
 experiment = "pipelinespec.cli.experiment:main"
+diff-constraints = "pipelinespec.cli.diff:main"
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]
