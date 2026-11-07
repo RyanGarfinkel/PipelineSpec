@@ -33,6 +33,9 @@ class Diagnoser:
                 log(f'{config["workflow"]} / {config["job"]}: the diagnoser reached its limit of {settings.agent.max_steps} tool calls; the failure is treated as not fixable.', style='yellow')
 
                 return Diagnosis(fixable=False, reason=f'The diagnoser reached its limit of {settings.agent.max_steps} tool calls before it answered.')
+            except GuardError as error:
+                issue = str(error)
+                break
 
             diagnosis = state.get('structured_response')
 
@@ -49,6 +52,9 @@ class Diagnoser:
             log(f'The agent stopped before finishing: {issue}', style='yellow')
             messages = [*state['messages'], ('user', issue)]
 
-        raise RuntimeError(f'The agent did not finish its work: {issue}')
+        recorder.note({'type': 'unfinished', 'issue': issue})
+        log(f'{config["workflow"]} / {config["job"]}: the diagnoser did not finish; the failure is treated as not fixable. {issue}', style='yellow')
+
+        return Diagnosis(fixable=False, reason=f'The diagnoser did not finish: {issue}')
 
 diagnoser = Diagnoser()

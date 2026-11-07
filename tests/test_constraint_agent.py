@@ -42,6 +42,33 @@ def test_agent_builds_its_messages_from_the_objects(tmp_path, monkeypatch):
     assert calls[0][0] == 'agents/CI/workflow_agent' and calls[0][1].startswith('Workflow: "CI" (.github/workflows/ci.yml)\n\nname: CI')
     assert calls[1][0] == 'agents/CI/build/constraint_agent' and 'Target job id: "build"' in calls[1][1] and calls[1][1].endswith('3\tjobs:\n4\t  build:\n5\t    runs-on: x')
 
+@pytest.mark.parametrize('stop', ['guard', 'retries'])
+def test_an_unfinished_agent_keeps_its_work(tmp_path, monkeypatch, stop):
+
+    module = importlib.import_module('pipelinespec.constraint.agent')
+    monkeypatch.setattr(settings.file, 'output', tmp_path)
+
+    class Agent:
+
+        def invoke(self, *_, **__):
+
+            if stop == 'guard':
+                raise module.GuardError('rejected')
+
+            return {'messages': []}
+
+    monkeypatch.setattr(module, 'create_agent', lambda *_, **__: Agent())
+    monkeypatch.setattr(module.model, 'get_llm', lambda: None)
+    monkeypatch.setattr(module.model, 'middleware', lambda: [])
+    saved = []
+
+    module.constraint_agent._ConstraintAgent__run('agents/x', '', [], 'task', lambda _: 'missing', lambda: saved.append(True))
+
+    events = json.loads((tmp_path / 'agents/x.json').read_text())['events']
+
+    assert saved and events[-1]['type'] == 'unfinished'
+    assert events[-1]['issue'] == ('rejected' if stop == 'guard' else 'missing')
+
 def test_declaring_a_variable_again_adds_its_values():
 
     constraints = JobConstraints()

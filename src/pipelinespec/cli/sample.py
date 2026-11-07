@@ -34,7 +34,7 @@ def count_lines(path: Path) -> int:
 
     return data.count(b'\n') + (bool(data) and not data.endswith(b'\n'))
 
-def measure(candidate: dict, clones: Path) -> Sample | None:
+def measure(candidate: dict, clones: Path, max_jobs: int | None) -> Sample | None:
 
     name = candidate['name']
     destination = clones / slug(name)
@@ -55,6 +55,12 @@ def measure(candidate: dict, clones: Path) -> Sample | None:
             log(f'{name} has no workflows; skipped.', style='dim')
             return None
 
+        jobs = sum(len(workflow.jobs) for workflow in workflows)
+
+        if max_jobs is not None and jobs > max_jobs:
+            log(f'{name} has {jobs} jobs, more than {max_jobs}; skipped.', style='dim')
+            return None
+
         commit = git.head(destination)
 
         if commit is None:
@@ -72,7 +78,7 @@ def measure(candidate: dict, clones: Path) -> Sample | None:
             primary_language=candidate.get('language'),
             languages=github.languages(candidate['full_name']),
             workflows=len(workflows),
-            jobs=sum(len(workflow.jobs) for workflow in workflows),
+            jobs=jobs,
             files=len(tracked),
             lines=sum(count_lines(destination / path) for path in tracked),
         )
@@ -93,7 +99,7 @@ def save_manifest(samples: list[Sample], output: Path) -> Path:
 
     return path
 
-def sample_repositories(n: int, threads: int, output: Path, verbose: bool) -> list[Sample]:
+def sample_repositories(n: int, threads: int, output: Path, verbose: bool, max_jobs: int | None) -> list[Sample]:
 
     clones = output / 'repositories'
     clones.mkdir(parents=True, exist_ok=True)
@@ -119,7 +125,7 @@ def sample_repositories(n: int, threads: int, output: Path, verbose: bool) -> li
             show()
 
         try:
-            return measure(candidate, clones)
+            return measure(candidate, clones, max_jobs)
         finally:
             with lock:
                 running.discard(candidate['name'])
@@ -168,15 +174,16 @@ def sample_repositories(n: int, threads: int, output: Path, verbose: bool) -> li
 @click.option('-n', type=click.IntRange(min=1), default=10, help='Number of repositories to fetch.')
 @click.option('--threads', '-t', type=click.IntRange(min=1), default=1, help='Number of repositories to process at once.')
 @click.option('--output', '-o', default='data/', help='Output directory for samples GitHub repositories.')
+@click.option('--max-jobs', type=click.IntRange(min=1), default=None, help='Skip repositories with more jobs than this across their workflows.')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose logging.')
-def main(n: int, threads: int, output: str, verbose: bool) -> None:
+def main(n: int, threads: int, output: str, max_jobs: int | None, verbose: bool) -> None:
 
     directory = Path(output)
     directory.mkdir(parents=True, exist_ok=True)
 
-    log(f'Sampling {n} repositories, {threads} at a time...')
+    log(f'Sampling {n} repositories, {threads} at a time{"" if max_jobs is None else f", with at most {max_jobs} jobs each"}...')
 
-    samples = sample_repositories(n, threads, directory, verbose)
+    samples = sample_repositories(n, threads, directory, verbose, max_jobs)
 
     if len(samples) < n:
         log(f'Only {len(samples)} of {n} repositories could be sampled.', style='yellow')

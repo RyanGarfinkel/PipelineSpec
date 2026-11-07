@@ -61,7 +61,7 @@ def sources(tmp_path, monkeypatch):
 def test_sampling_measures_each_repository_and_removes_its_clone(sources, tmp_path):
 
     output = tmp_path / 'out'
-    samples = sources.sample_repositories(2, 1, output, False)
+    samples = sources.sample_repositories(2, 1, output, False, None)
 
     assert [sample.name for sample in samples] == ['app', 'lib']
 
@@ -72,6 +72,15 @@ def test_sampling_measures_each_repository_and_removes_its_clone(sources, tmp_pa
     assert (app.stars, app.forks, app.topics, app.primary_language, app.languages) == (1500, 40, ['ci', 'tools'], 'Python', ['Python', 'Shell'])
     assert list((output / 'repositories').iterdir()) == []
 
+def test_a_repository_with_too_many_jobs_is_skipped(sources, tmp_path):
+
+    found = sources.github.search(1, 100)
+    found.append(repository(tmp_path / 'sources', 'tiny', {'.github/workflows/ci.yml': 'name: CI\non: push\njobs:\n  build:\n    runs-on: x\n    steps:\n      - run: echo\n'}))
+
+    samples = sources.sample_repositories(3, 1, tmp_path / 'out', False, 1)
+
+    assert [(sample.name, sample.jobs) for sample in samples] == [('tiny', 1)]
+
 def test_an_existing_directory_with_the_repository_name_is_left_alone(sources, tmp_path):
 
     output = tmp_path / 'out'
@@ -79,7 +88,7 @@ def test_an_existing_directory_with_the_repository_name_is_left_alone(sources, t
     kept.mkdir(parents=True)
     (kept / 'mine.txt').write_text('keep')
 
-    samples = sources.sample_repositories(1, 1, output, False)
+    samples = sources.sample_repositories(1, 1, output, False, None)
 
     assert [sample.name for sample in samples] == ['lib']
     assert (kept / 'mine.txt').read_text() == 'keep'
@@ -94,14 +103,14 @@ def test_a_repository_with_an_excluded_topic_is_never_cloned(sources, tmp_path, 
 
     monkeypatch.setattr(sources.git, 'clone', lambda url, destination: cloned.append(url) or clone(url, destination))
 
-    samples = sources.sample_repositories(1, 1, tmp_path / 'out', False)
+    samples = sources.sample_repositories(1, 1, tmp_path / 'out', False, None)
 
     assert [sample.name for sample in samples] == ['lib']
     assert not any(url.endswith('/app') for url in cloned)
 
 def test_threads_keep_the_search_order_and_stop_at_n(sources, tmp_path):
 
-    samples = sources.sample_repositories(1, 3, tmp_path / 'out', False)
+    samples = sources.sample_repositories(1, 3, tmp_path / 'out', False, None)
 
     assert [sample.name for sample in samples] == ['app']
 
@@ -118,7 +127,7 @@ def test_the_manifest_is_written_as_repositories_are_sampled(sources, tmp_path, 
         return save(samples, directory)
 
     monkeypatch.setattr(sources, 'save_manifest', recorded)
-    sources.sample_repositories(2, 1, output, False)
+    sources.sample_repositories(2, 1, output, False, None)
     [app, lib] = json.loads((output / 'manifest.json').read_text())
 
     assert written == [0, 1, 2]

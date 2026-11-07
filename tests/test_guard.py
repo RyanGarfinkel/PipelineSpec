@@ -11,31 +11,47 @@ def test_guard_counts_the_rejections_of_the_tools():
 
     assert rejection.startswith(REJECTED)
 
-    for _ in range(MAX_ERRORS - 1):
+    for _ in range(MAX_ERRORS):
+        guard.on_chat_model_start()
         guard.on_tool_end(rejection)
 
     with pytest.raises(RuntimeError, match='No recorded gate uses'):
-        guard.on_tool_end(rejection)
+        guard.on_chat_model_start()
 
 def test_guard():
 
     guard = GuardCallbackHandler()
 
     for _ in range(MAX_ERRORS - 1):
+        guard.on_chat_model_start()
         guard.on_tool_error(ValueError('rejected'))
 
+    guard.on_chat_model_start()
+    guard.on_tool_error(ValueError('rejected'))
     guard.on_tool_end('Recorded successfully.')
 
-    for _ in range(MAX_ERRORS - 1):
+    for _ in range(MAX_ERRORS):
+        guard.on_chat_model_start()
         guard.on_tool_error(ValueError('rejected'))
 
-    with pytest.raises(RuntimeError, match='rejected tool calls in a row'):
-        guard.on_tool_error(ValueError('still rejected'))
+    with pytest.raises(RuntimeError, match='all rejected'):
+        guard.on_chat_model_start()
 
     handled = GuardCallbackHandler()
 
-    for _ in range(MAX_ERRORS - 1):
+    for _ in range(MAX_ERRORS):
+        handled.on_chat_model_start()
         handled.on_tool_end(f'{REJECTED} wrong type')
 
     with pytest.raises(RuntimeError, match='wrong type'):
-        handled.on_tool_end(f'{REJECTED} wrong type')
+        handled.on_chat_model_start()
+
+def test_guard_lets_the_model_see_a_reply_of_rejected_calls():
+
+    guard = GuardCallbackHandler()
+    guard.on_chat_model_start()
+
+    for _ in range(MAX_ERRORS * 2):
+        guard.on_tool_error(ValueError('rejected'))
+
+    guard.on_chat_model_start()

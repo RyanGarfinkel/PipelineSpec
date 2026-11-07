@@ -50,11 +50,12 @@ def test_guard_stops_a_model_repeating_a_rejected_call(tmp_path):
     found = tools(tmp_path, Mocks())
     guard = GuardCallbackHandler()
 
-    for _ in range(MAX_ERRORS - 1):
+    for _ in range(MAX_ERRORS):
+        guard.on_chat_model_start()
         guard.on_tool_end(found['add_credential'].invoke({'name': 'PROVIDED'}))
 
-    with pytest.raises(RuntimeError, match='rejected tool calls'):
-        guard.on_tool_end(found['add_credential'].invoke({'name': 'PROVIDED'}))
+    with pytest.raises(RuntimeError, match='all rejected'):
+        guard.on_chat_model_start()
 
 def test_github_token_can_be_added(tmp_path):
 

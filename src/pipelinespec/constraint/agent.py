@@ -63,6 +63,7 @@ class ConstraintAgent:
         agent = create_agent(model.get_llm(), tools=tools, system_prompt=prompt, middleware=model.middleware())
         messages = [('user', task)]
         recorder, guard = RecordCallbackHandler(name), GuardCallbackHandler()
+        issue = None
 
         for _ in range(settings.agent.retries):
             try:
@@ -71,6 +72,9 @@ class ConstraintAgent:
                 recorder.note({'type': 'limit', 'max_steps': settings.agent.max_steps})
                 log(f'{name}: the agent reached its limit of {settings.agent.max_steps} tool calls; what it recorded so far is kept.', style='yellow')
                 return
+            except GuardError as error:
+                issue = str(error)
+                break
             finally:
                 save()
 
@@ -85,7 +89,8 @@ class ConstraintAgent:
             log(f'The agent stopped before finishing: {issue}', style='yellow')
             messages = [*state['messages'], ('user', issue)]
 
-        raise RuntimeError(f'The agent did not finish its work: {issue}')
+        recorder.note({'type': 'unfinished', 'issue': issue})
+        log(f'{name}: the agent did not finish its work; what it recorded so far is kept. {issue}', style='yellow')
 
     def __suffix(self, sample: int | None) -> str:
 

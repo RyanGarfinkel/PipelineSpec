@@ -113,7 +113,7 @@ class ConstraintTools:
 
         @tool(parse_docstring=True)
         def add_constant(target: Target, value: Scalar) -> str:
-            """Records a fixed value the job needs but no condition depends on, like an argument, path or message.
+            """Records a fixed value of the run context (the actor or a payload field) that the job reads but no condition depends on, like a payload field a step passes as an argument, path or message. A value the workflow sets itself is not part of the run context and is not recorded.
 
             Args:
                 target: Where the value goes, written like a variable's target, e.g. payload.pull_request.base.sha.

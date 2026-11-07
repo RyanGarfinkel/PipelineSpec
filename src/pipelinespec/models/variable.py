@@ -15,7 +15,7 @@ def target(value: str) -> str:
         raise ValueError('event is built in: use the name event in a term without declaring a variable for it.')
 
     if not re.fullmatch(r'actor|payload\..+', value):
-        raise ValueError(f'{value!r} is not something the run context sets. A target is actor or payload.<path>; a condition on anything else goes in add_unsolved, under the gate\'s name if a gate already uses it.')
+        raise ValueError(f'{value!r} is not something the run context sets. A target is actor or payload.<path>. A value the workflow sets itself is not recorded at all; a condition on anything else goes in add_unsolved, under the gate\'s name if a gate already uses it.')
 
     return value
 
