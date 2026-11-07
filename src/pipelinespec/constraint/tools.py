@@ -89,7 +89,7 @@ class ConstraintTools:
 
         @tool(parse_docstring=True)
         def add_unsolved(name: str, reason: str, location: str) -> str:
-            """Records one decision on something the run context does not set. It is recorded, but not tested. Replaces an entry of the same name.
+            """Records one decision on something the run context does not set. It is recorded, but not tested. Replaces an entry of the same name, and removes a gate of the same name, so a gate recorded by mistake on something the context does not set is moved here.
 
             Args:
                 name: Short unique name, e.g. step.deploy.success.
@@ -98,9 +98,18 @@ class ConstraintTools:
             """
 
             with lock:
-                self.__put(constraints.unsolved, Unsolved(name=name, reason=reason, location=location))
+                gates = [gate for gate in constraints.gates if gate.name != name]
+                removed = len(gates) < len(constraints.gates)
 
-                return RECORDED
+                if not removed:
+                    self.__put(constraints.unsolved, Unsolved(name=name, reason=reason, location=location))
+                    return RECORDED
+
+                constraints.gates[:] = gates
+                constraints.unsolved[:] = [entry for entry in constraints.unsolved if entry.name != name]
+                constraints.unsolved.append(Unsolved(name=name, reason=reason, location=location))
+
+                return f'{RECORDED} It replaced the gate "{name}".'
 
         @tool(parse_docstring=True)
         def add_constant(target: Target, value: Scalar) -> str:

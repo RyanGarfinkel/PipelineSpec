@@ -43,7 +43,7 @@ class ConstraintAgent:
             pending = constraint_tools.pending(constraints)
 
             if pending:
-                return f'These gates use names that have no variable yet: {"; ".join(f"{gate}: {", ".join(names)}" for gate, names in pending.items())}. Declare each with add_variable.'
+                return f'These gates use names that have no variable yet: {"; ".join(f"{gate}: {", ".join(names)}" for gate, names in pending.items())}. Declare each with add_variable. If a name is something the run context does not set, call add_unsolved with the gate\'s name instead: it replaces the gate.'
 
             if constraints.gates or constraints.unsolved or constraints.constants or any(event.get('name') == 'recorded' for event in recorder.events):
                 return None

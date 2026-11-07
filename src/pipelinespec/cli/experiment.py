@@ -1,5 +1,5 @@
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from click.core import ParameterSource
 from pipelinespec.models import Sample
 from pipelinespec import console, log
@@ -150,8 +150,10 @@ def main(n: int, threads: int, model: str, k: int, constraints_only: bool, trace
     succeeded = 0
 
     with progress, ThreadPoolExecutor(max_workers=threads) as pool:
-        for passed in pool.map(lambda sample: run_pipeline(sample, model, k, directory, not trace_only, not constraints_only, journal, header), samples):
-            succeeded += passed
+        futures = [pool.submit(run_pipeline, sample, model, k, directory, not trace_only, not constraints_only, journal, header) for sample in samples]
+
+        for future in as_completed(futures):
+            succeeded += future.result()
             progress.advance(bar)
 
     report(journal, f'{succeeded} of {len(samples)} repositories finished; results in {directory / "results" / slug(model)}.', 'green' if succeeded == len(samples) else 'yellow')
