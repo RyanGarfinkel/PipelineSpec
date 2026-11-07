@@ -1,4 +1,5 @@
 from pipelinespec.models import Job, JobConstraints, Workflow, WorkflowTrigger
+from langgraph.errors import GraphRecursionError
 from langchain_core.tools import BaseTool
 from singleton_decorator import singleton
 from langchain.agents import create_agent
@@ -66,6 +67,10 @@ class ConstraintAgent:
         for _ in range(settings.agent.retries):
             try:
                 state = agent.invoke({'messages': messages}, config={'recursion_limit': settings.agent.max_steps * 2 + 2, 'callbacks': [recorder, guard]})
+            except GraphRecursionError:
+                recorder.note({'type': 'limit', 'max_steps': settings.agent.max_steps})
+                log(f'{name}: the agent reached its limit of {settings.agent.max_steps} tool calls; what it recorded so far is kept.', style='yellow')
+                return
             finally:
                 save()
 

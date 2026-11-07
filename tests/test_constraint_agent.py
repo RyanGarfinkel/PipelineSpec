@@ -42,6 +42,26 @@ def test_agent_builds_its_messages_from_the_objects(tmp_path, monkeypatch):
     assert calls[0][0] == 'agents/CI/workflow_agent' and calls[0][1].startswith('Workflow: "CI" (.github/workflows/ci.yml)\n\nname: CI')
     assert calls[1][0] == 'agents/CI/build/constraint_agent' and 'Target job id: "build"' in calls[1][1] and calls[1][1].endswith('3\tjobs:\n4\t  build:\n5\t    runs-on: x')
 
+def test_declaring_a_variable_again_adds_its_values():
+
+    constraints = JobConstraints()
+    tools = {tool.name: tool for tool in constraint_tools.get(constraints)}
+    first = {'name': 'first.if', 'type': 'branch', 'location': 'run.sh:3', 'any_of': [[term('label', '==', 'alpha')]]}
+    second = {'name': 'second.if', 'type': 'branch', 'location': 'run.sh:9', 'any_of': [[term('label', '==', 'beta')]]}
+
+    assert tools['add_gate'].invoke(first).startswith('Recorded successfully.')
+    assert tools['add_variable'].invoke({'name': 'label', 'target': 'payload.label.name', 'values': ['alpha', 'other']}) == 'Recorded successfully.'
+    assert tools['add_gate'].invoke(second) == 'Recorded successfully.'
+    assert tools['add_variable'].invoke({'name': 'label', 'target': 'payload.label.name', 'values': ['beta', 'other']}) == 'Recorded successfully. "label" now holds [\'alpha\', \'other\', \'beta\'].'
+    assert constraints.variables['label'].values == ('alpha', 'other', 'beta')
+
+    assert tools['add_variable'].invoke({'name': 'label', 'target': 'payload.label.name', 'values': ['beta']}).startswith('Rejected, nothing recorded: "label" already holds all of')
+    assert tools['add_variable'].invoke({'name': 'label', 'target': 'payload.label.name', 'values': [1]}).startswith('Rejected, nothing recorded:')
+    assert constraints.variables['label'].values == ('alpha', 'other', 'beta')
+
+    assert tools['add_variable'].invoke({'name': 'label', 'target': 'payload.inputs.label', 'values': ['gamma', 'alpha', 'beta']}) == 'Recorded successfully.'
+    assert constraints.variables['label'].target == 'payload.inputs.label' and constraints.variables['label'].values == ('gamma', 'alpha', 'beta')
+
 def test_tools():
 
     constraints = JobConstraints()
@@ -64,7 +84,7 @@ def test_tools():
     assert tools['add_variable'].invoke(dry_run) == 'Recorded successfully.'
     assert constraint_tools.pending(constraints) == {}
     assert tools['add_gate'].invoke(step).startswith('Rejected, nothing recorded: "step.if" is already recorded exactly like this')
-    assert tools['add_variable'].invoke(dry_run).startswith('Rejected, nothing recorded: "dry_run" is already declared exactly like this')
+    assert tools['add_variable'].invoke(dry_run).startswith('Rejected, nothing recorded: "dry_run" already holds all of [False, True]')
 
     assert tools['add_gate'].invoke({**step, 'any_of': [[term('dry_run', '==', 'true')]]}).startswith('Rejected, nothing recorded: "dry_run" holds bool values, but it is compared with \'true\', a str. Compare it with true or false.')
     assert tools['add_gate'].invoke({**step, 'any_of': [[term('dry_run', 'contains', 'x')]]}).startswith('Rejected, nothing recorded: contains works on strings, but "dry_run" holds bool values.')

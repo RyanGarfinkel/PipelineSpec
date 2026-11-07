@@ -1,4 +1,5 @@
 from langchain.agents.structured_output import ToolStrategy
+from langgraph.errors import GraphRecursionError
 from pipelinespec.models import Diagnosis, Mocks
 from singleton_decorator import singleton
 from langchain.agents import create_agent
@@ -25,7 +26,14 @@ class Diagnoser:
         log(f'{config["workflow"]} / {config["job"]}: diagnosing the failed run...')
 
         for _ in range(settings.agent.retries):
-            state = agent.invoke({'messages': messages}, config={'recursion_limit': settings.agent.max_steps * 2 + 2, 'callbacks': [recorder, guard]})
+            try:
+                state = agent.invoke({'messages': messages}, config={'recursion_limit': settings.agent.max_steps * 2 + 2, 'callbacks': [recorder, guard]})
+            except GraphRecursionError:
+                recorder.note({'type': 'limit', 'max_steps': settings.agent.max_steps})
+                log(f'{config["workflow"]} / {config["job"]}: the diagnoser reached its limit of {settings.agent.max_steps} tool calls; the failure is treated as not fixable.', style='yellow')
+
+                return Diagnosis(fixable=False, reason=f'The diagnoser reached its limit of {settings.agent.max_steps} tool calls before it answered.')
+
             diagnosis = state.get('structured_response')
 
             if diagnosis is not None:

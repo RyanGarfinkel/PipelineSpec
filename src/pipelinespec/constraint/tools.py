@@ -43,7 +43,7 @@ class ConstraintTools:
 
         @tool(parse_docstring=True)
         def add_variable(name: str, target: Target, values: list[Scalar]) -> str:
-            """Declares one input that gates refer to by name: where its value lives in the run context and the values worth testing. Declare it once, after the first gate that uses it; every gate that uses the name shares it. Replaces a variable of the same name.
+            """Declares one input that gates refer to by name: where its value lives in the run context and the values worth testing. Declare it after the first gate that uses it; every gate that uses the name shares it. Declaring the same name and target again adds the new values to the ones it already holds; a different target replaces the variable.
 
             Args:
                 name: The name a gate uses for it, e.g. locked. A gate may also write the target or any dotted end of it (payload.issue.locked, issue.locked).
@@ -54,9 +54,19 @@ class ConstraintTools:
             with lock:
                 variable = Variable(target=target, values=values)
                 self.__check_types(constraints, name, variable)
+                existing = constraints.variables.get(name)
+                merged = existing is not None and existing.target == variable.target
 
-                if constraints.variables.get(name) == variable:
-                    self.__reject(f'"{name}" is already declared exactly like this. Nothing changed: declare the variables that are still missing, or stop if none are.')
+                if merged:
+                    if existing.kind != variable.kind:
+                        self.__reject(f'"{name}" ({target}) already holds {existing.kind} values {list(existing.values)}; give {existing.kind} values to add to them.')
+
+                    added = [value for value in variable.values if value not in existing.values]
+
+                    if not added:
+                        self.__reject(f'"{name}" already holds all of {list(variable.values)}. Nothing changed: declare the variables that are still missing, or stop if none are.')
+
+                    variable = Variable(target=target, values=(*existing.values, *added))
 
                 trial = constraints.model_copy(update={'variables': {**constraints.variables, name: variable}})
 
@@ -70,11 +80,12 @@ class ConstraintTools:
                         self.__reject(f'With this variable, gate "{gate.name}" is not valid: {error}')
 
                 constraints.variables[name] = variable
+                held = f' "{name}" now holds {list(variable.values)}.' if merged else ''
 
                 if constraints.constants.pop(variable.target, None) is not None:
-                    return f'{RECORDED} It replaced the constant for {variable.target}, which a gate now compares.'
+                    return f'{RECORDED}{held} It replaced the constant for {variable.target}, which a gate now compares.'
 
-                return RECORDED
+                return f'{RECORDED}{held}'
 
         @tool(parse_docstring=True)
         def add_unsolved(name: str, reason: str, location: str) -> str:

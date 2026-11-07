@@ -100,7 +100,8 @@ Everything else is not set by the context: results and outputs of earlier jobs a
 <rules>
 - When a condition mixes inputs the context sets with things it does not, the gate keeps the input part and each other part goes in add_unsolved with the same location.
 - Every step by default requires that nothing before it failed. Do not record that default. Record a status only when a condition checks it explicitly with a status function, because that changes when the step runs. A job's `needs:` on its own only sets the order, so do not record it either. Record a condition that reads `needs.<job>.result` or `needs.<job>.outputs`.
-- Declare a variable for every name a gate uses, after the gate that uses it. A gate is not complete until every name it uses has a variable.
+- Declare a variable for every name a gate uses, after the gate that uses it. A gate is not complete until every name it uses has a variable. Declaring a name again with the same target adds values to it, so a later gate only needs the values it adds.
+- One reply can hold several tool calls, and each reply costs a turn out of a limited number. Make every call that does not depend on another in the same reply: read the files you need together, and record a gate together with its variables.
 - A payload value a step uses without deciding on it is a constant, not a variable. A target a gate compares is not a constant.
 - When the payload holds a value in more than one place, code and the libraries an action uses may read any of them: record the constant at every place the real payload holds it.
 - Use the HEAD commit for any sha, except a sha that marks the start of a range of commits or the state before a change: use the parent commit for that, or the HEAD commit when there is no parent. Another sha is not in the repository and makes the job fail.

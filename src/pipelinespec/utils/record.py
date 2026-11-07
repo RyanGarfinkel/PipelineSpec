@@ -67,6 +67,10 @@ class RecordCallbackHandler(BaseCallbackHandler):
 
         self.__add({'type': 'tool', 'name': name, 'input': arguments, 'error': str(error), 'seconds': self.__elapsed(run_id)})
 
+    def note(self, event: dict[str, Any]) -> None:
+
+        self.__add(event)
+
     def usage(self) -> dict[str, Any]:
 
         def total(events: list[dict[str, Any]]) -> dict[str, int]:
