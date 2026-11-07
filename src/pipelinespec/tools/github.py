@@ -3,8 +3,7 @@ import requests
 import os
 
 SEARCH_URL = 'https://api.github.com/search/repositories'
-EXCLUDED_TOPICS = ['awesome-list', 'tutorial', 'template', 'list', 'certification', 'roadmap', 'interview', 'skills', 'deepseek']
-QUERY = f'stars:>1000 archived:false fork:false topics:>0 -language:markdown {" ".join(f"-topic:{topic}" for topic in EXCLUDED_TOPICS)} -org:deepseek -org:deepseek-ai'
+QUERY = 'stars:>1000 archived:false fork:false topics:>0 -language:markdown -org:deepseek -org:deepseek-ai'
 
 @singleton
 class GitHub:

@@ -85,6 +85,20 @@ def test_an_existing_directory_with_the_repository_name_is_left_alone(sources, t
     assert (kept / 'mine.txt').read_text() == 'keep'
     assert sorted(path.name for path in (output / 'repositories').iterdir()) == ['app']
 
+def test_a_repository_with_an_excluded_topic_is_never_cloned(sources, tmp_path, monkeypatch):
+
+    found = sources.github.search(1, 100)
+    found[1]['topics'] = ['python', 'interview-preparation']
+    cloned = []
+    clone = sources.git.clone
+
+    monkeypatch.setattr(sources.git, 'clone', lambda url, destination: cloned.append(url) or clone(url, destination))
+
+    samples = sources.sample_repositories(1, 1, tmp_path / 'out', False)
+
+    assert [sample.name for sample in samples] == ['lib']
+    assert not any(url.endswith('/app') for url in cloned)
+
 def test_threads_keep_the_search_order_and_stop_at_n(sources, tmp_path):
 
     samples = sources.sample_repositories(1, 3, tmp_path / 'out', False)

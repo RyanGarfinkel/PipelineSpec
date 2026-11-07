@@ -16,6 +16,11 @@ import json
 PER_PAGE = 100
 MAX_PAGES = 10
 BINARY_PROBE = 8192
+EXCLUDED_TOPICS = frozenset({
+    'awesome', 'awesome-list', 'list', 'tutorial', 'template', 'certification', 'roadmap', 'skills', 'ai-skills', 'deepseek',
+    'style-guide', 'styleguide', 'book', 'books', 'education', 'leetcode',
+    'interview', 'interview-preparation', 'interview-questions', 'coding-interviews', 'algorithm-interview', 'interview-practice',
+})
 
 def count_lines(path: Path) -> int:
 
@@ -122,13 +127,23 @@ def sample_repositories(n: int, threads: int, output: Path, verbose: bool) -> li
 
     with Live(Group(progress, processing), console=console), ThreadPoolExecutor(max_workers=threads) as pool:
         for page in range(1, MAX_PAGES + 1):
-            candidates = github.search(page, PER_PAGE)
+            found_page = github.search(page, PER_PAGE)
 
             if verbose:
                 raw = output / 'raw' / f'repositories_{page}.json'
                 raw.parent.mkdir(parents=True, exist_ok=True)
-                raw.write_text(json.dumps(candidates, indent=4))
-                log(f'Search page {page}: {len(candidates)} candidates, saved to {raw}.', style='dim')
+                raw.write_text(json.dumps(found_page, indent=4))
+                log(f'Search page {page}: {len(found_page)} candidates, saved to {raw}.', style='dim')
+
+            candidates = []
+
+            for candidate in found_page:
+                excluded = EXCLUDED_TOPICS.intersection(candidate.get('topics', []))
+
+                if excluded:
+                    log(f'{candidate["name"]} has the excluded topic {", ".join(sorted(excluded))}; skipped.', style='dim')
+                else:
+                    candidates.append(candidate)
 
             index = 0
 
@@ -142,7 +157,7 @@ def sample_repositories(n: int, threads: int, output: Path, verbose: bool) -> li
                         save_manifest(samples, output)
                         progress.advance(bar)
 
-            if len(samples) >= n or len(candidates) < PER_PAGE:
+            if len(samples) >= n or len(found_page) < PER_PAGE:
                 break
 
     log(f'Saved {len(samples)} repositories to {path}.', style='green')
