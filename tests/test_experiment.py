@@ -34,6 +34,20 @@ def test_the_manifest_is_read_and_cut_to_n(tmp_path):
 
     assert module.load_samples(2, tmp_path) == samples[:2]
 
+def test_random_samples_only_come_from_repositories_with_saved_constraints(tmp_path):
+
+    module = import_module('pipelinespec.cli.experiment')
+    samples = [sample_of(name) for name in 'abcde']
+    (tmp_path / 'manifest.json').write_text(json.dumps([sample.model_dump(mode='json') for sample in samples]))
+
+    for name, saved in (('a', 'constraints.json'), ('c', 'constraints_1.json'), ('d', 'constraints_2.json')):
+        results = tmp_path / 'results' / 'm' / name
+        results.mkdir(parents=True)
+        (results / saved).write_text('{}')
+
+    assert sorted(sample.name for sample in module.random_samples(5, 'm', tmp_path)) == ['a', 'c']
+    assert len(module.random_samples(1, 'm', tmp_path)) == 1
+
 def test_a_missing_manifest_is_an_error(tmp_path):
 
     module = import_module('pipelinespec.cli.experiment')

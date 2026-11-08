@@ -47,6 +47,14 @@ def test_equivalent():
     assert smt.equivalent(constraints, [keep], constraints, [same], ['push'])
     assert not smt.equivalent(constraints, [keep], constraints, [other], ['push'])
 
+def test_equivalent_when_written_alike():
+
+    gate = lambda name, first, second: Gate(name='g', type='scope', location='x:1', any_of=[[Term(name=name, op='contains', value=first)], [Term(name=name, op='contains', value=second)]])
+    left = JobConstraints(variables={'body': Variable(target='payload.issue.body', values=('a', 'b'))})
+    right = JobConstraints(variables={'text': Variable(target='payload.issue.body', values=('a', 'b'))})
+
+    assert smt.equivalent(left, [gate('body', 'alpha', 'beta')], right, [gate('issue.body', 'beta', 'alpha')], ['issues'])
+
 def test_solve_needs_an_event():
 
     with pytest.raises(ValueError, match='no event'):

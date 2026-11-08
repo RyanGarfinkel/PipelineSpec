@@ -9,6 +9,7 @@ from datetime import datetime
 from threading import Lock
 from pathlib import Path
 import subprocess
+import random
 import shutil
 import click
 import json
@@ -24,14 +25,25 @@ def report(journal: Path, message: str, style: str | None = None) -> None:
     with JOURNAL_LOCK, open(journal, 'a') as f:
         f.write(f'[{datetime.now():%Y-%m-%d %H:%M:%S}] {message}\n')
 
-def load_samples(n: int, output: Path) -> list[Sample]:
+def read_manifest(output: Path) -> list[Sample]:
 
     path = output / 'manifest.json'
 
     if not path.exists():
         raise click.UsageError(f'There is no manifest at {path}. Run sample first.')
 
-    return [Sample.model_validate(entry) for entry in json.loads(path.read_text())][:n]
+    return [Sample.model_validate(entry) for entry in json.loads(path.read_text())]
+
+def load_samples(n: int, output: Path) -> list[Sample]:
+
+    return read_manifest(output)[:n]
+
+def random_samples(n: int, model: str, output: Path) -> list[Sample]:
+
+    results = output / 'results' / slug(model)
+    traceable = [sample for sample in read_manifest(output) if traced_constraints(results / slug(sample.name), 1, False) is not None]
+
+    return random.sample(traceable, min(n, len(traceable)))
 
 def run_pipelinespec(arguments: list[str], terminal) -> int:
 
@@ -96,7 +108,7 @@ def run_pipeline(sample: Sample, model: str, k: int, output: Path, constraints: 
         shutil.rmtree(destination, ignore_errors=True)
 
 @click.command()
-@click.option('-n', type=click.IntRange(min=1), default=50, help='Number of repositories from the manifest to run.')
+@click.option('-n', type=click.IntRange(min=1), default=50, help='Number of repositories to run: the first n of the manifest, or with --trace-only a random n of those with saved constraints.')
 @click.option('--threads', '-t', type=click.IntRange(min=1), default=1, help='Number of repositories to process at once.')
 @click.option('--model', '-m', required=True, help='Model for the agents.')
 @click.option('-k', type=click.IntRange(min=1), default=5, help='Number of constraint agent runs per repository; only the first is traced.')
@@ -116,12 +128,15 @@ def main(n: int, threads: int, model: str, k: int, constraints_only: bool, trace
 
     directory = Path(output)
     journal = directory / 'terminal.log'
-    samples = load_samples(n, directory)
+    samples = random_samples(n, model, directory) if trace_only else load_samples(n, directory)
 
     with JOURNAL_LOCK, open(journal, 'a') as f:
         f.write(f'\n===== experiment started {datetime.now():%Y-%m-%d %H:%M:%S} =====\n')
 
-    report(journal, f'Read {len(samples)} repositories from {directory / "manifest.json"}.')
+    report(journal, f'Read {len(samples)} repositories from {directory / "manifest.json"}' + (f', picked at random from those with saved constraints:{", ".join(sample.name for sample in samples)}.' if trace_only else '.'))
+
+    if trace_only and len(samples) < n:
+        report(journal, f'Only {len(samples)} repositories have saved constraints for {model}, fewer than the {n} asked for.', 'yellow')
     stages = 'constraints only' if constraints_only else 'tracing only' if trace_only else 'constraints, then tracing'
     parameters = {
         'model': model,

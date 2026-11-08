@@ -1,4 +1,4 @@
-from z3 import And, Bool, BoolVal, Contains, Int, IntVal, Not, Optimize, Or, PrefixOf, Solver, String, StringVal, SuffixOf, Xor, is_true, sat, unsat
+from z3 import And, Bool, BoolVal, Contains, Int, IntVal, Not, Optimize, Or, PrefixOf, Solver, String, StringVal, SuffixOf, Xor, is_true, sat, unknown, unsat
 from pipelinespec.models import Gate, JobConstraints, Scalar, Term, Variant, WorkflowTrigger, kind
 from singleton_decorator import singleton
 from pipelinespec import log, settings
@@ -6,6 +6,7 @@ from itertools import product
 import operator
 
 COMPARE = {'==': operator.eq, '!=': operator.ne, '<': operator.lt, '<=': operator.le, '>': operator.gt, '>=': operator.ge}
+EQUIVALENCE_TIMEOUT = 2000
 
 @singleton
 class Smt:
@@ -76,7 +77,7 @@ class Smt:
 
         return list(candidates.values())
 
-    def equivalent(self, left: JobConstraints, left_gates: list[Gate], right: JobConstraints, right_gates: list[Gate], events: list[str]) -> bool:
+    def equivalent(self, left: JobConstraints, left_gates: list[Gate], right: JobConstraints, right_gates: list[Gate], events: list[str]) -> bool | None:
 
         kinds: dict[str, str] = {}
 
@@ -85,14 +86,34 @@ class Smt:
                 if kinds.setdefault(variable.target, variable.kind) != variable.kind:
                     return False
 
+        canonical = self.__canonical(left, left_gates)
+
+        if canonical is not None and canonical == self.__canonical(right, right_gates):
+            return True
+
         symbols = {'event': String('event'), **{target: {'bool': Bool, 'int': Int, 'str': String}[name](target) for target, name in kinds.items()}}
         allowed = self.__any([symbols['event'] == StringVal(event) for event in events]) if events else BoolVal(True)
         conjunction = lambda constraints, gates: self.__all([self.__gate(gate, constraints, symbols) for gate in gates]) if gates else BoolVal(True)
 
         solver = Solver()
+        solver.set('timeout', EQUIVALENCE_TIMEOUT)
         solver.add(allowed, Xor(conjunction(left, left_gates), conjunction(right, right_gates)))
+        result = solver.check()
 
-        return solver.check() == unsat
+        return None if result == unknown else result == unsat
+
+    def __canonical(self, constraints: JobConstraints, gates: list[Gate]) -> frozenset | None:
+
+        aliases = constraints.aliases
+        targets = {'event': 'event', **{name: variable.target for name, variable in constraints.variables.items()}}
+        terms = [term for gate in gates for clause in gate.any_of for term in clause]
+
+        if any(aliases.get(term.name, term.name) not in targets for term in terms):
+            return None
+
+        resolved = lambda term: (targets[aliases.get(term.name, term.name)], term.op, type(term.value).__name__, term.value)
+
+        return frozenset(frozenset(frozenset(map(resolved, clause)) for clause in gate.any_of) for gate in gates)
 
     def __gate(self, gate: Gate, constraints: JobConstraints, symbols: dict):
 

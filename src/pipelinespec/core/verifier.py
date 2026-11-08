@@ -106,6 +106,9 @@ class Verifier:
         if same:
             return Check(name=name, passed=True)
 
+        if same is None:
+            return Check(name=name, passed=False, detail=f'Z3 could not decide within the time limit whether {" && ".join(gate.condition for gate in found)} matches the expected {" && ".join(gate.condition for gate in wanted)}')
+
         return Check(name=name, passed=False, detail=f'expected {" && ".join(gate.condition for gate in wanted)}, got {" && ".join(gate.condition for gate in found)}')
 
     def __within(self, actual: str, expected: str) -> bool:
