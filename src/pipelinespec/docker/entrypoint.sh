@@ -1,7 +1,7 @@
 #!/bin/sh
 mount -t tracefs none /sys/kernel/tracing 2>/dev/null
 
-export BPFTRACE_PERF_RB_PAGES=4096
+export BPFTRACE_PERF_RB_PAGES=16384
 export BPFTRACE_MAX_STRLEN=4096
 export BPFTRACE_MAX_MAP_KEYS=8192
 export BPFTRACE_MAX_BPF_PROGS=1024

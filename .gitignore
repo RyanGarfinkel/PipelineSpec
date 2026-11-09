@@ -1,3 +1,4 @@
+analysis/*.pdf
 __pycache__/
 data/*
 !data/manifest.json

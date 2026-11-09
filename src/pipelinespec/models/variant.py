@@ -53,7 +53,10 @@ class Variant(BaseModel):
                 *path, key = target.removeprefix('payload.').split('.')
 
                 for part in path:
-                    parent = parent.setdefault(part, {})
+                    if not isinstance(parent.get(part), dict):
+                        parent[part] = {}
+
+                    parent = parent[part]
 
                 parent[key] = value
 
