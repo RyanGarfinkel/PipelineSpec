@@ -3,35 +3,40 @@
 ## Dependencies
 
 - [Act](https://nektosact.com/installation/index.html): Runs GitHub Actions jobs and workflows locally.
-- [Docker](https://www.docker.com/): Needed by act. Also for mitmproxy to trace network calls.
+- [uv](https://docs.astral.sh/uv/): Python package manager.
+- [Docker](https://www.docker.com/): Runs act and the privileged tracing sidecar.
+- [mitmproxy](https://mitmproxy.org/): Traces and mocks network calls from inside the sidecar.
 
-## Sampling
+## How to Use
 
-The following command fetches `n` public GitHub repositories with at least one workflow file. You can set the number of samples to get by adding a `-n` flag (default 10), and use verbose logging by including the `-v` flag (default false). The resulting `samples.json` file will be stored in a `data/` directory created in the current working directory by default, but can be specified with the `-o` flag.
+Create a `.env` file in the root of this repository:
 
 ```bash
-uv run sample
+CERTIFICATE=~/.mitmproxy
+OPENAI_API_KEY=your-api-key
 ```
 
-It is recommended to setup a GitHub [Personal Access Token (PAT)](https://github.com/settings/personal-access-tokens) before running since this script uses the GitHub Rest API. To set this up. First, create an `.env` file with `GITHUB_TOKEN=your-github-pat-token`. Then run the sample script with:
+You must run `docker build` first. Then you can run the PipelineSpec tool.
 
 ```bash
-uv run --env-file .env sample
+docker build -t pipeline-sidecar:latest src/pipelinespec/docker
+uv run --env-file .env pipelinespec -r data/repositories/toy -m gpt-6-luna
 ```
 
-## PipelineSpec Tool
+## Experiment
 
-### Setting up environment
+### Generate Samples
 
-It is reccomended that you setup an environment file `.env` when using the PipelineSpec.
-
-1. Generate a [mitmproxy certificate](https://docs.mitmproxy.org/stable/concepts/certificates/). This is to support network tracing and create a directory in `~/.mitmproxy`. Either pass this path into PipelineSpec using the `-C` flag or set `CERTIFICATE` in your environment variables before running.   
-2.
-
-### How to Run
-
-The following commmand runs PipelineSpec. You must secify the repository using the `--repo` flag.
+Finds public GitHub repositories and writes `data/manifest.json`. Add `GITHUB_TOKEN=your-github-pat-token` to `.env` to avoid rate limit.
 
 ```bash
-uv run --env-file .env pipelinespec --repo path-to-repository
+uv run --env-file .env sample -n 10 -t 4
+```
+
+### Run the Experiment
+
+Runs PipelineSpec on data in `data/manifest.json` and writes each one's results to `data/results/<model>/<repo>/`. Can use `--constraints-only` or `--trace-only` to seperate stages. `-k` can be used with constraints only to rerun constrant agent multiple times.
+
+```bash
+uv run --env-file .env experiment -n 10 -t 2 -m gpt-6-luna
 ```
