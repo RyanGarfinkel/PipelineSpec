@@ -37,15 +37,15 @@ def test_the_manifest_is_read_and_cut_to_n(tmp_path):
 def test_random_samples_only_come_from_repositories_with_saved_constraints(tmp_path):
 
     module = import_module('pipelinespec.cli.experiment')
-    samples = [sample_of(name) for name in 'abcde']
+    samples = [sample_of(name) for name in ('a', 'b', 'c', 'd', 'e', 'next.js', 'vscode')]
     (tmp_path / 'manifest.json').write_text(json.dumps([sample.model_dump(mode='json') for sample in samples]))
 
-    for name, saved in (('a', 'constraints.json'), ('c', 'constraints_1.json'), ('d', 'constraints_2.json')):
+    for name, saved in (('a', 'constraints.json'), ('c', 'constraints_1.json'), ('d', 'constraints_2.json'), ('next_js', 'constraints.json'), ('vscode', 'constraints.json')):
         results = tmp_path / 'results' / 'm' / name
         results.mkdir(parents=True)
         (results / saved).write_text('{}')
 
-    assert sorted(sample.name for sample in module.random_samples(5, 'm', tmp_path)) == ['a', 'c']
+    assert sorted(sample.name for sample in module.random_samples(5, 'm', tmp_path)) == ['a', 'c', 'next.js', 'vscode']
     assert len(module.random_samples(1, 'm', tmp_path)) == 1
 
 def test_a_missing_manifest_is_an_error(tmp_path):

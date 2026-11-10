@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from click.core import ParameterSource
 from pipelinespec.models import Sample
 from pipelinespec import console, log
+from collections.abc import Callable
 from pipelinespec.utils import slug
 from pipelinespec.tools import git
 from datetime import datetime
@@ -58,7 +59,7 @@ def traced_constraints(results: Path, k: int, constraints: bool) -> Path | None:
 
     return next((path for path in (results / 'constraints.json', results / 'constraints_1.json') if path.exists()), None)
 
-def run_pipeline(sample: Sample, model: str, k: int, output: Path, constraints: bool, tracing: bool, journal: Path, header: str) -> bool:
+def run_pipeline(sample: Sample, model: str, k: int, output: Path, constraints: bool, tracing: bool, journal: Path, header: str, status: Callable[[str, str | None], None] = lambda *_: None) -> bool:
 
     results = output / 'results' / slug(model) / slug(sample.name)
     results.mkdir(parents=True, exist_ok=True)
@@ -92,6 +93,7 @@ def run_pipeline(sample: Sample, model: str, k: int, output: Path, constraints: 
             terminal.flush()
 
             for stage, arguments in stages:
+                status(sample.name, stage)
                 code = run_pipelinespec(arguments, terminal)
 
                 if code != 0:
@@ -105,6 +107,7 @@ def run_pipeline(sample: Sample, model: str, k: int, output: Path, constraints: 
         report(journal, f'{sample.name} could not be run: {problem}', 'yellow')
         return False
     finally:
+        status(sample.name, None)
         shutil.rmtree(destination, ignore_errors=True)
 
 @click.command()
@@ -163,9 +166,22 @@ def main(n: int, threads: int, model: str, k: int, constraints_only: bool, trace
     progress = Progress(SpinnerColumn(), TextColumn('[cyan]{task.description}'), BarColumn(), MofNCompleteColumn(), TimeElapsedColumn(), console=console)
     bar = progress.add_task('Running pipelinespec', total=len(samples))
     succeeded = 0
+    active: dict[str, str] = {}
+    active_lock = Lock()
+
+    def show(name: str, stage: str | None) -> None:
+
+        with active_lock:
+            if stage:
+                active[name] = stage
+            else:
+                active.pop(name, None)
+
+            running = ', '.join(f'{repo} ({step})' for repo, step in active.items())
+            progress.update(bar, description=f'Running pipelinespec: {running}' if running else 'Running pipelinespec')
 
     with progress, ThreadPoolExecutor(max_workers=threads) as pool:
-        futures = [pool.submit(run_pipeline, sample, model, k, directory, not trace_only, not constraints_only, journal, header) for sample in samples]
+        futures = [pool.submit(run_pipeline, sample, model, k, directory, not trace_only, not constraints_only, journal, header, show) for sample in samples]
 
         for future in as_completed(futures):
             succeeded += future.result()
